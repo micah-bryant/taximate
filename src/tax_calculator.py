@@ -336,9 +336,96 @@ class TaxCalculator:
             "gross_revenue": gross_revenue,
         }
 
-    def generate_summary(self, df: pd.DataFrame) -> dict[str, float]:
-        """Generate a complete tax summary."""
-        taxes = self.calculate_taxes(df)
+    def calculate_taxes_annualized(self, df: pd.DataFrame, months: int = 12) -> dict[str, float]:
+        """
+        Calculate taxes with annual projection based on months of data.
+
+        Args:
+            df: DataFrame with transaction data
+            months: Number of months the data covers (1-12)
+
+        Returns:
+            Dictionary with both period totals and annualized projections
+        """
+        if months < 1 or months > 12:
+            months = 12
+
+        # Get totals for each input category (period amounts)
+        gigs = self._get_category_total(df, CATEGORY_GIGS)
+        revenue_no_sales_tax = self._get_category_total(df, CATEGORY_REVENUE_NO_SALES_TAX)
+        revenue_with_sales_tax = self._get_category_total(df, CATEGORY_REVENUE_WITH_SALES_TAX)
+        expenses = abs(self._get_category_total(df, CATEGORY_EXPENSES))
+
+        # Calculate period values
+        sales_tax_due = revenue_no_sales_tax * self.tax_rates.sales_tax_rate
+        profit = (revenue_no_sales_tax - sales_tax_due) + revenue_with_sales_tax - expenses
+        gross_revenue = gigs + revenue_no_sales_tax + revenue_with_sales_tax - expenses
+
+        # Annualize the input amounts
+        annual_factor = 12 / months
+        annual_gigs = gigs * annual_factor
+        annual_revenue_no_sales_tax = revenue_no_sales_tax * annual_factor
+        annual_revenue_with_sales_tax = revenue_with_sales_tax * annual_factor
+        annual_expenses = expenses * annual_factor
+
+        # Calculate annualized values
+        annual_sales_tax_due = annual_revenue_no_sales_tax * self.tax_rates.sales_tax_rate
+        annual_profit = (
+            (annual_revenue_no_sales_tax - annual_sales_tax_due)
+            + annual_revenue_with_sales_tax
+            - annual_expenses
+        )
+        annual_gross_revenue = (
+            annual_gigs
+            + annual_revenue_no_sales_tax
+            + annual_revenue_with_sales_tax
+            - annual_expenses
+        )
+
+        # Calculate taxes on annualized amounts (brackets are annual)
+        annual_se_tax = self.tax_rates.calculate_self_employment_tax(annual_profit)
+        se_tax_deduction = annual_se_tax * 0.5
+        annual_taxable_income = max(0, annual_profit - se_tax_deduction)
+
+        annual_federal_tax = self.tax_rates.calculate_bracket_tax(
+            annual_taxable_income, self.tax_rates.federal_brackets
+        )
+        annual_state_tax = self.tax_rates.calculate_bracket_tax(
+            annual_taxable_income, self.tax_rates.state_brackets
+        )
+        annual_total_tax = annual_se_tax + annual_federal_tax + annual_state_tax
+        annual_take_home = annual_profit + annual_gigs - annual_total_tax
+
+        return {
+            # Period totals (actual data)
+            "months": float(months),
+            "gigs": gigs,
+            "revenue_no_sales_tax": revenue_no_sales_tax,
+            "revenue_with_sales_tax": revenue_with_sales_tax,
+            "expenses": expenses,
+            "sales_tax_rate": self.tax_rates.sales_tax_rate,
+            "sales_tax_due": sales_tax_due,
+            "profit": profit,
+            "gross_revenue": gross_revenue,
+            # Annualized projections
+            "annual_gigs": annual_gigs,
+            "annual_revenue_no_sales_tax": annual_revenue_no_sales_tax,
+            "annual_revenue_with_sales_tax": annual_revenue_with_sales_tax,
+            "annual_expenses": annual_expenses,
+            "annual_sales_tax_due": annual_sales_tax_due,
+            "annual_profit": annual_profit,
+            "annual_taxable_income": annual_taxable_income,
+            "annual_sole_proprietor_tax": annual_se_tax,
+            "annual_federal_income_tax": annual_federal_tax,
+            "annual_state_income_tax": annual_state_tax,
+            "annual_total_income_tax": annual_total_tax,
+            "annual_take_home": annual_take_home,
+            "annual_gross_revenue": annual_gross_revenue,
+        }
+
+    def generate_summary(self, df: pd.DataFrame, months: int = 12) -> dict[str, float]:
+        """Generate a complete tax summary with optional annualization."""
+        taxes = self.calculate_taxes_annualized(df, months)
         uncategorized_count = len(self.get_uncategorized_items(df))
 
         return {
