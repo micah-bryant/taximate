@@ -1,0 +1,15 @@
+[project]
+name = "taximate"
+version = "0.1.0"
+description = "Import EveryDollar transactions and calculate tax deductions"
+requires-python = ">=3.12"
+dependencies = [
+    "pandas>=2.0.0",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.4.0",
+    "mypy>=1.10.0",
+    "pandas-stubs>=2.0.0",
+]
