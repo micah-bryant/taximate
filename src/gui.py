@@ -259,6 +259,9 @@ class TaximateGUI:
             tk.END, f"Gross Revenue:        ${summary['gross_revenue']:>12,.2f}\n"
         )
         self.results_text.insert(tk.END, f"Business Profit:      ${summary['profit']:>12,.2f}\n")
+        self.results_text.insert(
+            tk.END, f"Taxable Income:       ${summary['taxable_income']:>12,.2f}\n"
+        )
         self.results_text.insert(tk.END, "                      ═════════════\n")
         self.results_text.insert(tk.END, f"TOTAL TAKE HOME:      ${summary['take_home']:>12,.2f}\n")
 

@@ -1,0 +1,15 @@
+filing_status,rate,min_income,max_income
+single,0.10,0,11925
+single,0.12,11925,48475
+single,0.22,48475,103350
+single,0.24,103350,197300
+single,0.32,197300,250525
+single,0.35,250525,626350
+single,0.37,626350,
+married_jointly,0.10,0,23850
+married_jointly,0.12,23850,96950
+married_jointly,0.22,96950,206700
+married_jointly,0.24,206700,394600
+married_jointly,0.32,394600,501050
+married_jointly,0.35,501050,751600
+married_jointly,0.37,751600,
