@@ -1,0 +1,5 @@
+tax_type,rate,wage_base,notes
+social_security,0.124,176100,12.4% up to wage base
+medicare,0.029,,2.9% on all earnings
+additional_medicare,0.009,200000,0.9% on earnings above threshold (single)
+income_factor,0.9235,,92.35% of net SE income is taxable

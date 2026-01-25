@@ -1,26 +1,27 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from pathlib import Path
 
-if TYPE_CHECKING:
-    import pandas as pd
-
-
-# Tax rates (configurable)
-SALES_TAX_RATE = 0.0775  # 7.75%
-SELF_EMPLOYMENT_TAX_RATE = 0.153  # 15.3%
-SELF_EMPLOYMENT_INCOME_FACTOR = 0.9235  # 92.35% of profit is subject to SE tax
-FEDERAL_TAX_RATE = 0.17  # 17%
-STATE_TAX_RATE = 0.05  # 5%
-
+import pandas as pd
 
 # Income category types
 CATEGORY_GIGS = "Gigs (Tax Already Paid)"
 CATEGORY_REVENUE_NO_SALES_TAX = "Revenue (No Sales Tax)"
 CATEGORY_REVENUE_WITH_SALES_TAX = "Revenue (Sales Tax Included)"
 CATEGORY_EXPENSES = "Business Expenses"
-CATEGORY_UNCATEGORIZED = "Uncategorized"
+
+# Default tax rates directory
+TAX_RATES_DIR = Path(__file__).parent.parent / "tax_rates"
+
+
+@dataclass
+class TaxBracket:
+    """Represents a single tax bracket."""
+
+    rate: float
+    min_income: float
+    max_income: float | None  # None means no upper limit
 
 
 @dataclass
@@ -32,12 +33,165 @@ class IncomeCategory:
     items: list[str] = field(default_factory=list)
 
 
+class TaxRates:
+    """Load and manage tax rates from CSV files."""
+
+    def __init__(self, tax_rates_dir: Path = TAX_RATES_DIR) -> None:
+        self.tax_rates_dir = tax_rates_dir
+        self.federal_brackets: list[TaxBracket] = []
+        self.state_brackets: list[TaxBracket] = []
+        self.se_social_security_rate: float = 0.124
+        self.se_medicare_rate: float = 0.029
+        self.se_additional_medicare_rate: float = 0.009
+        self.se_additional_medicare_threshold: float = 200000
+        self.se_wage_base: float = 176100
+        self.se_income_factor: float = 0.9235
+        self.sales_tax_rate: float = 0.0775
+        self._load_rates()
+
+    def _load_rates(self) -> None:
+        """Load all tax rates from CSV files."""
+        self._load_federal_brackets()
+        self._load_state_brackets()
+        self._load_self_employment_rates()
+        self._load_sales_tax_rates()
+
+    def _load_federal_brackets(self) -> None:
+        """Load federal income tax brackets."""
+        csv_path = self.tax_rates_dir / "federal_income_tax_2025.csv"
+        if not csv_path.exists():
+            return
+
+        df = pd.read_csv(csv_path)
+        # Filter for single filers (default)
+        single_df = df[df["filing_status"] == "single"]
+
+        self.federal_brackets = []
+        for _, row in single_df.iterrows():
+            max_income: str = row["max_income"] if pd.notna(row["max_income"]) else None
+            self.federal_brackets.append(
+                TaxBracket(
+                    rate=float(row["rate"]),
+                    min_income=float(row["min_income"]),
+                    max_income=float(max_income) if max_income else None,
+                )
+            )
+
+    def _load_state_brackets(self) -> None:
+        """Load California state income tax brackets."""
+        csv_path = self.tax_rates_dir / "california_income_tax_2024.csv"
+        if not csv_path.exists():
+            return
+
+        df = pd.read_csv(csv_path)
+        # Filter for single filers (default)
+        single_df = df[df["filing_status"] == "single"]
+
+        self.state_brackets = []
+        for _, row in single_df.iterrows():
+            max_income: str = row["max_income"] if pd.notna(row["max_income"]) else None
+            self.state_brackets.append(
+                TaxBracket(
+                    rate=float(row["rate"]),
+                    min_income=float(row["min_income"]),
+                    max_income=float(max_income) if max_income else None,
+                )
+            )
+
+    def _load_self_employment_rates(self) -> None:
+        """Load self-employment tax rates."""
+        csv_path = self.tax_rates_dir / "self_employment_tax_2025.csv"
+        if not csv_path.exists():
+            return
+
+        df = pd.read_csv(csv_path)
+        for _, row in df.iterrows():
+            tax_type = row["tax_type"]
+            rate = float(row["rate"])
+
+            if tax_type == "social_security":
+                self.se_social_security_rate = rate
+                if pd.notna(row["wage_base"]):
+                    self.se_wage_base = float(row["wage_base"])
+            elif tax_type == "medicare":
+                self.se_medicare_rate = rate
+            elif tax_type == "additional_medicare":
+                self.se_additional_medicare_rate = rate
+                if pd.notna(row["wage_base"]):
+                    self.se_additional_medicare_threshold = float(row["wage_base"])
+            elif tax_type == "income_factor":
+                self.se_income_factor = rate
+
+    def _load_sales_tax_rates(self) -> None:
+        """Load sales tax rates."""
+        csv_path = self.tax_rates_dir / "sales_tax_2025.csv"
+        if not csv_path.exists():
+            return
+
+        df = pd.read_csv(csv_path)
+        # Use San Diego city rate as default
+        san_diego_row = df[df["jurisdiction"] == "san_diego_city"]
+        if not san_diego_row.empty:
+            self.sales_tax_rate = float(san_diego_row.iloc[0]["rate"])
+
+    def calculate_bracket_tax(self, income: float, brackets: list[TaxBracket]) -> float:
+        """Calculate tax using progressive brackets."""
+        if income <= 0:
+            return 0.0
+
+        total_tax = 0.0
+
+        for bracket in brackets:
+            if income <= bracket.min_income:
+                break
+
+            # Determine the taxable amount in this bracket
+            bracket_min = bracket.min_income
+            bracket_max = bracket.max_income if bracket.max_income else float("inf")
+
+            taxable_in_bracket = min(income, bracket_max) - bracket_min
+            if taxable_in_bracket > 0:
+                total_tax += taxable_in_bracket * bracket.rate
+
+        return total_tax
+
+    def calculate_self_employment_tax(self, net_earnings: float) -> float:
+        """
+        Calculate self-employment tax.
+
+        SE tax = (net_earnings * 0.9235) * (Social Security rate + Medicare rate)
+        Plus additional Medicare tax on high earners.
+        """
+        if net_earnings <= 0:
+            return 0.0
+
+        # Apply the 92.35% factor
+        taxable_se_income = net_earnings * self.se_income_factor
+
+        # Social Security portion (capped at wage base)
+        ss_taxable = min(taxable_se_income, self.se_wage_base)
+        ss_tax = ss_taxable * self.se_social_security_rate
+
+        # Medicare portion (no cap)
+        medicare_tax = taxable_se_income * self.se_medicare_rate
+
+        # Additional Medicare tax on high earners
+        additional_medicare = 0.0
+        if taxable_se_income > self.se_additional_medicare_threshold:
+            additional_medicare = (
+                taxable_se_income - self.se_additional_medicare_threshold
+            ) * self.se_additional_medicare_rate
+
+        return ss_tax + medicare_tax + additional_medicare
+
+
 class TaxCalculator:
     """Calculate taxes based on categorized transactions."""
 
-    def __init__(self) -> None:
+    def __init__(self, tax_rates_dir: Path = TAX_RATES_DIR) -> None:
         self.categories: dict[str, IncomeCategory] = {}
         self.item_to_category: dict[str, str] = {}
+        self.tax_rates = TaxRates(tax_rates_dir)
         self._setup_default_categories()
 
     def _setup_default_categories(self) -> None:
@@ -48,7 +202,7 @@ class TaxCalculator:
         )
         self.add_category(
             CATEGORY_REVENUE_NO_SALES_TAX,
-            "Business revenue that needs sales tax calculated (7.75%)",
+            f"Business revenue that needs sales tax calculated ({self.tax_rates.sales_tax_rate * 100:.2f}%)",
         )
         self.add_category(
             CATEGORY_REVENUE_WITH_SALES_TAX,
@@ -109,7 +263,7 @@ class TaxCalculator:
 
     def calculate_taxes(self, df: pd.DataFrame) -> dict[str, float]:
         """
-        Calculate all taxes based on the Excel formulas.
+        Calculate all taxes using bracket-based rates from CSV files.
 
         Input categories:
         - Gigs (B): Income with sales tax & income tax already applied
@@ -117,47 +271,52 @@ class TaxCalculator:
         - Revenue With Sales Tax (D): Sales tax already included
         - Expenses (F): Deductible business expenses
 
-        Formulas:
-        - Sales Tax Due (E) = C * 7.75%
-        - Profit (G) = (C - E) + D - F
-        - Sole Proprietor Tax (H) = (G * 0.9235) * 15.3%
-        - Federal Income Tax (I) = (G - H*0.5) * 17%
-        - State Income Tax (J) = (G - H*0.5) * 5%
-        - Total Income Tax (K) = H + I + J
-        - Take Home (L) = G + B - K
-        - Gross Revenue (M) = B + C + D - F
+        Calculations:
+        - Sales Tax Due = C * sales_tax_rate
+        - Profit = (C - Sales Tax) + D - F
+        - Self-Employment Tax = calculated using SE tax rules (SS + Medicare)
+        - Federal Income Tax = calculated using federal brackets on (Profit - SE deduction)
+        - State Income Tax = calculated using CA brackets on (Profit - SE deduction)
+        - Total Income Tax = SE Tax + Federal + State
+        - Take Home = Profit + Gigs - Total Income Tax
+        - Gross Revenue = Gigs + C + D - F
         """
-        # Get totals for each input category (amounts are already signed correctly)
+        # Get totals for each input category
         gigs = self._get_category_total(df, CATEGORY_GIGS)
         revenue_no_sales_tax = self._get_category_total(df, CATEGORY_REVENUE_NO_SALES_TAX)
         revenue_with_sales_tax = self._get_category_total(df, CATEGORY_REVENUE_WITH_SALES_TAX)
-        expenses = abs(self._get_category_total(df, CATEGORY_EXPENSES))  # Make positive for calc
+        expenses = abs(self._get_category_total(df, CATEGORY_EXPENSES))
 
-        # Calculate Sales Tax Due (E = C * 0.0775)
-        sales_tax_due = revenue_no_sales_tax * SALES_TAX_RATE
+        # Calculate Sales Tax Due
+        sales_tax_due = revenue_no_sales_tax * self.tax_rates.sales_tax_rate
 
-        # Calculate Profit from Business (G = (C - E) + D - F)
+        # Calculate Profit from Business
         profit = (revenue_no_sales_tax - sales_tax_due) + revenue_with_sales_tax - expenses
 
-        # Calculate Sole Proprietor Tax (H = (G * 0.9235) * 0.153)
-        sole_proprietor_tax = (profit * SELF_EMPLOYMENT_INCOME_FACTOR) * SELF_EMPLOYMENT_TAX_RATE
+        # Calculate Self-Employment Tax using proper SE tax rules
+        sole_proprietor_tax = self.tax_rates.calculate_self_employment_tax(profit)
 
         # Half of SE tax is deductible for income tax calculation
         se_tax_deduction = sole_proprietor_tax * 0.5
+        taxable_income = max(0, profit - se_tax_deduction)
 
-        # Calculate Federal Income Tax (I = (G - H*0.5) * 0.17)
-        federal_income_tax = (profit - se_tax_deduction) * FEDERAL_TAX_RATE
+        # Calculate Federal Income Tax using brackets
+        federal_income_tax = self.tax_rates.calculate_bracket_tax(
+            taxable_income, self.tax_rates.federal_brackets
+        )
 
-        # Calculate State Income Tax (J = (G - H*0.5) * 0.05)
-        state_income_tax = (profit - se_tax_deduction) * STATE_TAX_RATE
+        # Calculate State Income Tax using California brackets
+        state_income_tax = self.tax_rates.calculate_bracket_tax(
+            taxable_income, self.tax_rates.state_brackets
+        )
 
-        # Calculate Total Income Taxes Due (K = H + I + J)
+        # Calculate Total Income Taxes Due
         total_income_tax = sole_proprietor_tax + federal_income_tax + state_income_tax
 
-        # Calculate Total Take Home (L = G + B - K)
+        # Calculate Total Take Home
         take_home = profit + gigs - total_income_tax
 
-        # Calculate Gross Revenue (M = B + C + D - F)
+        # Calculate Gross Revenue
         gross_revenue = gigs + revenue_no_sales_tax + revenue_with_sales_tax - expenses
 
         return {
@@ -165,8 +324,10 @@ class TaxCalculator:
             "revenue_no_sales_tax": revenue_no_sales_tax,
             "revenue_with_sales_tax": revenue_with_sales_tax,
             "expenses": expenses,
+            "sales_tax_rate": self.tax_rates.sales_tax_rate,
             "sales_tax_due": sales_tax_due,
             "profit": profit,
+            "taxable_income": taxable_income,
             "sole_proprietor_tax": sole_proprietor_tax,
             "federal_income_tax": federal_income_tax,
             "state_income_tax": state_income_tax,
@@ -175,12 +336,99 @@ class TaxCalculator:
             "gross_revenue": gross_revenue,
         }
 
-    def generate_summary(self, df: pd.DataFrame) -> dict[str, float | dict[str, float]]:
-        """Generate a complete tax summary."""
-        taxes = self.calculate_taxes(df)
+    def calculate_taxes_annualized(self, df: pd.DataFrame, months: int = 12) -> dict[str, float]:
+        """
+        Calculate taxes with annual projection based on months of data.
+
+        Args:
+            df: DataFrame with transaction data
+            months: Number of months the data covers (1-12)
+
+        Returns:
+            Dictionary with both period totals and annualized projections
+        """
+        if months < 1 or months > 12:
+            months = 12
+
+        # Get totals for each input category (period amounts)
+        gigs = self._get_category_total(df, CATEGORY_GIGS)
+        revenue_no_sales_tax = self._get_category_total(df, CATEGORY_REVENUE_NO_SALES_TAX)
+        revenue_with_sales_tax = self._get_category_total(df, CATEGORY_REVENUE_WITH_SALES_TAX)
+        expenses = abs(self._get_category_total(df, CATEGORY_EXPENSES))
+
+        # Calculate period values
+        sales_tax_due = revenue_no_sales_tax * self.tax_rates.sales_tax_rate
+        profit = (revenue_no_sales_tax - sales_tax_due) + revenue_with_sales_tax - expenses
+        gross_revenue = gigs + revenue_no_sales_tax + revenue_with_sales_tax - expenses
+
+        # Annualize the input amounts
+        annual_factor = 12 / months
+        annual_gigs = gigs * annual_factor
+        annual_revenue_no_sales_tax = revenue_no_sales_tax * annual_factor
+        annual_revenue_with_sales_tax = revenue_with_sales_tax * annual_factor
+        annual_expenses = expenses * annual_factor
+
+        # Calculate annualized values
+        annual_sales_tax_due = annual_revenue_no_sales_tax * self.tax_rates.sales_tax_rate
+        annual_profit = (
+            (annual_revenue_no_sales_tax - annual_sales_tax_due)
+            + annual_revenue_with_sales_tax
+            - annual_expenses
+        )
+        annual_gross_revenue = (
+            annual_gigs
+            + annual_revenue_no_sales_tax
+            + annual_revenue_with_sales_tax
+            - annual_expenses
+        )
+
+        # Calculate taxes on annualized amounts (brackets are annual)
+        annual_se_tax = self.tax_rates.calculate_self_employment_tax(annual_profit)
+        se_tax_deduction = annual_se_tax * 0.5
+        annual_taxable_income = max(0, annual_profit - se_tax_deduction)
+
+        annual_federal_tax = self.tax_rates.calculate_bracket_tax(
+            annual_taxable_income, self.tax_rates.federal_brackets
+        )
+        annual_state_tax = self.tax_rates.calculate_bracket_tax(
+            annual_taxable_income, self.tax_rates.state_brackets
+        )
+        annual_total_tax = annual_se_tax + annual_federal_tax + annual_state_tax
+        annual_take_home = annual_profit + annual_gigs - annual_total_tax
+
+        return {
+            # Period totals (actual data)
+            "months": float(months),
+            "gigs": gigs,
+            "revenue_no_sales_tax": revenue_no_sales_tax,
+            "revenue_with_sales_tax": revenue_with_sales_tax,
+            "expenses": expenses,
+            "sales_tax_rate": self.tax_rates.sales_tax_rate,
+            "sales_tax_due": sales_tax_due,
+            "profit": profit,
+            "gross_revenue": gross_revenue,
+            # Annualized projections
+            "annual_gigs": annual_gigs,
+            "annual_revenue_no_sales_tax": annual_revenue_no_sales_tax,
+            "annual_revenue_with_sales_tax": annual_revenue_with_sales_tax,
+            "annual_expenses": annual_expenses,
+            "annual_sales_tax_due": annual_sales_tax_due,
+            "annual_profit": annual_profit,
+            "annual_taxable_income": annual_taxable_income,
+            "annual_sole_proprietor_tax": annual_se_tax,
+            "annual_federal_income_tax": annual_federal_tax,
+            "annual_state_income_tax": annual_state_tax,
+            "annual_total_income_tax": annual_total_tax,
+            "annual_take_home": annual_take_home,
+            "annual_gross_revenue": annual_gross_revenue,
+        }
+
+    def generate_summary(self, df: pd.DataFrame, months: int = 12) -> dict[str, float]:
+        """Generate a complete tax summary with optional annualization."""
+        taxes = self.calculate_taxes_annualized(df, months)
         uncategorized_count = len(self.get_uncategorized_items(df))
 
         return {
             **taxes,
-            "uncategorized_count": uncategorized_count,
+            "uncategorized_count": float(uncategorized_count),
         }

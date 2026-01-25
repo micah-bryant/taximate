@@ -1,0 +1,5 @@
+jurisdiction,rate,notes
+california_state,0.0725,Base California state rate
+san_diego_county,0.005,County district tax
+san_diego_city,0.0775,Combined rate for San Diego city
+san_diego_max,0.0875,Maximum rate in some San Diego districts
