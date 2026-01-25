@@ -129,8 +129,8 @@ class TaxRates:
             return
 
         df = pd.read_csv(csv_path)
-        # Use San Diego city rate as default
-        san_diego_row = df[df["jurisdiction"] == "san_diego_city"]
+        # Use San Diego combined rate as default
+        san_diego_row = df[df["jurisdiction"] == "san_diego_combined"]
         if not san_diego_row.empty:
             self.sales_tax_rate = float(san_diego_row.iloc[0]["rate"])
 

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from .data_loader import get_unique_values, load_all_csvs
 from .tax_calculator import TaxCalculator
+from .tax_rate_updater import TaxRateUpdater
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -44,6 +45,17 @@ class TaximateGUI:
 
         self.status_label = ttk.Label(load_frame, text="No data loaded")
         self.status_label.pack(side="left", padx=(10, 0))
+
+        # Spacer
+        ttk.Label(load_frame, text="").pack(side="left", padx=(20, 0))
+
+        self.update_rates_btn = ttk.Button(
+            load_frame, text="Update Tax Rates", command=self._update_tax_rates
+        )
+        self.update_rates_btn.pack(side="left")
+
+        self.rates_status_label = ttk.Label(load_frame, text="")
+        self.rates_status_label.pack(side="left", padx=(10, 0))
 
         # Left panel - Items list
         left_frame = ttk.LabelFrame(main_frame, text="Transaction Items", padding="5")
@@ -145,6 +157,52 @@ class TaximateGUI:
             messagebox.showerror("Error", str(e))
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load data: {e}")
+
+    def _update_tax_rates(self) -> None:
+        """Update tax rates from online sources."""
+        self.update_rates_btn.config(state="disabled")
+        self.rates_status_label.config(text="Updating...")
+        self.root.update()
+
+        def progress_callback(message: str) -> None:
+            self.rates_status_label.config(text=message)
+            self.root.update()
+
+        try:
+            updater = TaxRateUpdater(progress_callback=progress_callback)
+            results = updater.update_all()
+
+            # Reload tax rates in calculator
+            self.calculator = TaxCalculator()
+
+            # Update category descriptions with new rates
+            self._refresh_category_combo()
+
+            success_count = sum(1 for r in results if r.success)
+            if success_count == len(results):
+                self.rates_status_label.config(text="All rates updated!")
+                messagebox.showinfo(
+                    "Update Complete",
+                    "Tax rates have been updated from online sources.\n\n"
+                    + "\n".join(f"• {r.message}" for r in results),
+                )
+            else:
+                self.rates_status_label.config(text=f"{success_count}/{len(results)} updated")
+                messagebox.showwarning(
+                    "Partial Update",
+                    "Some tax rates could not be updated:\n\n"
+                    + "\n".join(f"• {r.message}" for r in results),
+                )
+        except Exception as e:
+            self.rates_status_label.config(text="Update failed")
+            messagebox.showerror("Error", f"Failed to update tax rates: {e}")
+        finally:
+            self.update_rates_btn.config(state="normal")
+
+    def _refresh_category_combo(self) -> None:
+        """Refresh category combo with updated tax rates."""
+        self.category_combo["values"] = list(self.calculator.categories.keys())
+        self._on_category_selected()
 
     def _assign_items(self) -> None:
         """Assign selected items to the chosen category."""
