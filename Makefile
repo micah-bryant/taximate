@@ -1,4 +1,4 @@
-.PHONY: install run format check clean build-mac clean-build
+.PHONY: install run format check clean build-mac build-windows clean-build
 
 install:
 	uv sync
@@ -20,7 +20,10 @@ clean:
 
 # PyInstaller build targets
 build-mac:
-	uv run pyinstaller taximate_mac.spec --noconfirm
+	uv run pyinstaller --windowed --onefile --name Taximate main.py
+
+build-windows:
+	uv run pyinstaller --onefile --noconsole --name Taximate main.py
 
 clean-build:
 	rm -rf build dist

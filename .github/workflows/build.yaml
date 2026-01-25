@@ -1,0 +1,48 @@
+name: Build executables
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      # Install dependencies once
+      - name: Install
+        run: make install
+
+      # Clean build outputs (optional but nice)
+      - name: Clean build outputs
+        run: make clean-build
+
+      # Build per-OS using your Makefile targets
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
+        run: make build-mac
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: make build-windows
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Taximate-${{ runner.os }}
+          path: dist/**
