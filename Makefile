@@ -1,4 +1,4 @@
-.PHONY: install run format check clean
+.PHONY: install run format check clean build-mac clean-build
 
 install:
 	uv sync
@@ -16,4 +16,11 @@ check:
 	uv run mypy --config-file .mypy.ini --cache-dir .mypy_cache .
 
 clean:
-	rm -rf .venv __pycache__ src/__pycache__ .mypy_cache	
+	rm -rf .venv __pycache__ src/__pycache__ .mypy_cache
+
+# PyInstaller build targets
+build-mac:
+	uv run pyinstaller taximate_mac.spec --noconfirm
+
+clean-build:
+	rm -rf build dist

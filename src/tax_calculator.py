@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -11,8 +12,18 @@ CATEGORY_REVENUE_NO_SALES_TAX = "Revenue (No Sales Tax)"
 CATEGORY_REVENUE_WITH_SALES_TAX = "Revenue (Sales Tax Included)"
 CATEGORY_EXPENSES = "Business Expenses"
 
+
+def _get_base_path() -> Path:
+    """Get the base path for resources, handling PyInstaller bundles."""
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        # Running as PyInstaller bundle
+        return Path(sys._MEIPASS)
+    # Running as normal Python script
+    return Path(__file__).parent.parent
+
+
 # Default tax rates directory
-TAX_RATES_DIR = Path(__file__).parent.parent / "tax_rates"
+TAX_RATES_DIR = _get_base_path() / "tax_rates"
 
 
 @dataclass
