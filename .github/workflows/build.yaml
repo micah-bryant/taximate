@@ -4,6 +4,10 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+
 
 jobs:
   build:
@@ -26,10 +30,11 @@ jobs:
 
       # Install dependencies once
       - name: Install
-        run: make install
+        run: uv sync --group dev
 
-      # Clean build outputs (optional but nice)
+      # On Windows, force bash so rm -rf in Makefile works predictably
       - name: Clean build outputs
+        shell: bash
         run: make clean-build
 
       # Build per-OS using your Makefile targets
