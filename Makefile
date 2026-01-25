@@ -19,11 +19,14 @@ clean:
 	rm -rf .venv __pycache__ src/__pycache__ .mypy_cache
 
 # PyInstaller build targets
-build-mac:
-	uv run pyinstaller --windowed --onefile --name Taximate main.py
+build-mac-intel:
+	uv run pyinstaller --windowed --onefile --name Taximate-mac-intel main.py
+
+build-mac-arm64:
+	uv run pyinstaller --windowed --onefile --name Taximate-mac-arm64 main.py
 
 build-windows:
-	uv run pyinstaller --onefile --noconsole --name Taximate main.py
+	uv run pyinstaller --onefile --noconsole --name Taximate-windows main.py
 
 clean-build:
 	rm -rf build dist
