@@ -1,3 +1,22 @@
+"""Tax calculation engine for self-employment income.
+
+This module provides classes for calculating various taxes on self-employment
+income including:
+- Federal income tax (progressive brackets)
+- California state income tax (progressive brackets)
+- Self-employment tax (Social Security + Medicare)
+- Sales tax
+
+Tax rates are loaded from CSV files in the tax_rates/ directory, making them
+easy to update for new tax years or different jurisdictions.
+
+Classes:
+    TaxBracket: Represents a single progressive tax bracket.
+    IncomeCategory: Groups transaction items into income/expense categories.
+    TaxRates: Loads and manages tax rates from CSV files.
+    TaxCalculator: Main calculation engine for computing taxes.
+"""
+
 from __future__ import annotations
 
 import sys
@@ -6,7 +25,7 @@ from pathlib import Path
 
 import pandas as pd
 
-# Income category types
+# Income category type constants
 CATEGORY_GIGS = "Gigs (Tax Already Paid)"
 CATEGORY_REVENUE_NO_SALES_TAX = "Revenue (No Sales Tax)"
 CATEGORY_REVENUE_WITH_SALES_TAX = "Revenue (Sales Tax Included)"

@@ -1,18 +1,51 @@
+"""Tkinter GUI for Taximate tax calculation application.
+
+This module provides the main graphical user interface for Taximate, featuring:
+- Drag-and-drop CSV file loading (when tkinterdnd2 is available)
+- Multi-file selection via file browser dialog
+- Transaction item categorization with visual feedback
+- Real-time tax calculation and summary display
+- Annual projection based on partial year data
+
+The GUI uses a three-panel layout:
+- Left: Transaction items list with category indicators
+- Center: Category assignment controls and category contents
+- Right: Tax calculation summary and results
+"""
+
 from __future__ import annotations
 
 import tkinter as tk
-from tkinter import messagebox, ttk
-from typing import TYPE_CHECKING
+from tkinter import filedialog, messagebox, ttk
+from typing import Any
 
-from .data_loader import get_unique_values, load_all_csvs
+import pandas as pd
+
+# Try to import tkinterdnd2 for drag-and-drop support (optional)
+# Falls back gracefully to file browser only if unavailable
+try:
+    from tkinterdnd2 import DND_FILES
+except (ImportError, RuntimeError):
+    DND_FILES = None
+
+from .data_loader import get_unique_values, load_csvs_from_paths
 from .tax_calculator import TaxCalculator
-
-if TYPE_CHECKING:
-    import pandas as pd
 
 
 class TaximateGUI:
-    """Main GUI for the Taximate application."""
+    """Main GUI window for the Taximate application.
+
+    Provides a graphical interface for loading CSV transaction files,
+    categorizing items into income/expense types, and calculating
+    self-employment taxes with annual projections.
+
+    Attributes:
+        root: The Tkinter root window.
+        df: DataFrame containing loaded transaction data.
+        calculator: TaxCalculator instance for tax computations.
+        loaded_files: List of file paths that have been loaded.
+        has_dnd: Whether drag-and-drop functionality is available.
+    """
 
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
@@ -21,8 +54,13 @@ class TaximateGUI:
 
         self.df: pd.DataFrame | None = None
         self.calculator = TaxCalculator()
+        self.loaded_files: list[str] = []
+
+        # Check if drag-and-drop is available (root must be TkinterDnD.Tk)
+        self.has_dnd = DND_FILES is not None and hasattr(root, "TkdndVersion")
 
         self._create_widgets()
+        self._on_category_selected()  # Show description for default category
 
     def _create_widgets(self) -> None:
         """Create all GUI widgets."""
@@ -35,12 +73,39 @@ class TaximateGUI:
         main_frame.columnconfigure(1, weight=1)
         main_frame.rowconfigure(1, weight=1)
 
-        # Load data button
+        # Drop zone and load buttons
         load_frame = ttk.Frame(main_frame)
         load_frame.grid(row=0, column=0, columnspan=3, sticky="ew", pady=(0, 10))
 
-        self.load_btn = ttk.Button(load_frame, text="Load CSV Data", command=self._load_data)
-        self.load_btn.pack(side="left")
+        # Drop zone - with optional drag-and-drop support
+        drop_text = (
+            "Drop CSV files here\nor click Browse" if self.has_dnd else "Click to select CSV files"
+        )
+        self.drop_zone = tk.Label(
+            load_frame,
+            text=drop_text,
+            relief="groove",
+            width=30,
+            height=2,
+            bg="#f0f0f0",
+            cursor="hand2",
+        )
+        self.drop_zone.pack(side="left", padx=(0, 10))
+        self.drop_zone.bind("<Button-1>", lambda e: self._browse_files())
+
+        # Register drag-and-drop if available
+        if self.has_dnd and DND_FILES is not None:
+            drop_zone_dnd: Any = self.drop_zone
+            drop_zone_dnd.drop_target_register(DND_FILES)
+            drop_zone_dnd.dnd_bind("<<Drop>>", self._on_drop)
+            drop_zone_dnd.dnd_bind("<<DragEnter>>", self._on_drag_enter)
+            drop_zone_dnd.dnd_bind("<<DragLeave>>", self._on_drag_leave)
+
+        self.browse_btn = ttk.Button(load_frame, text="Browse Files", command=self._browse_files)
+        self.browse_btn.pack(side="left", padx=(0, 10))
+
+        self.clear_btn = ttk.Button(load_frame, text="Clear Data", command=self._clear_data)
+        self.clear_btn.pack(side="left", padx=(0, 10))
 
         self.status_label = ttk.Label(load_frame, text="No data loaded")
         self.status_label.pack(side="left", padx=(10, 0))
@@ -68,11 +133,10 @@ class TaximateGUI:
         cat_frame = ttk.LabelFrame(middle_frame, text="Assign to Category", padding="5")
         cat_frame.grid(row=0, column=0, sticky="new")
 
-        self.category_var = tk.StringVar()
-        self.category_combo = ttk.Combobox(
-            cat_frame, textvariable=self.category_var, state="readonly", width=35
-        )
+        self.category_combo = ttk.Combobox(cat_frame, state="readonly", width=35)
         self.category_combo["values"] = list(self.calculator.categories.keys())
+        if self.calculator.categories:
+            self.category_combo.current(0)  # Select first category by default
         self.category_combo.pack(pady=5)
 
         # Category description label
@@ -127,24 +191,133 @@ class TaximateGUI:
 
         main_frame.columnconfigure(2, weight=1)
 
-    def _load_data(self) -> None:
-        """Load CSV data from the data directory."""
+    def _parse_dropped_files(self, data: str) -> list[str]:
+        """Parse the dropped file paths from the DnD data string."""
+        # Handle different formats from different OS
+        # Windows may wrap paths in {} if they contain spaces
+        files = []
+        current = ""
+        in_braces = False
+
+        for char in data:
+            if char == "{":
+                in_braces = True
+            elif char == "}":
+                in_braces = False
+                if current:
+                    files.append(current.strip())
+                    current = ""
+            elif char == " " and not in_braces:
+                if current:
+                    files.append(current.strip())
+                    current = ""
+            else:
+                current += char
+
+        if current:
+            files.append(current.strip())
+
+        return [f for f in files if f]
+
+    def _on_drop(self, event: Any) -> None:
+        """Handle files dropped onto the drop zone."""
+        files = self._parse_dropped_files(event.data)
+        csv_files = [f for f in files if f.lower().endswith(".csv")]
+
+        if not csv_files:
+            messagebox.showwarning("Warning", "No CSV files found in dropped items")
+            return
+
+        self._load_files(csv_files)
+        self._reset_drop_zone()
+
+    def _on_drag_enter(self, event: Any) -> None:
+        """Visual feedback when dragging over drop zone."""
+        self.drop_zone.config(bg="#d0e8ff", text="Release to load files")
+
+    def _on_drag_leave(self, event: Any) -> None:
+        """Reset visual feedback when leaving drop zone."""
+        self._reset_drop_zone()
+
+    def _reset_drop_zone(self) -> None:
+        """Reset drop zone to default appearance."""
+        text = (
+            "Drop CSV files here\nor click Browse" if self.has_dnd else "Click to select CSV files"
+        )
+        self.drop_zone.config(bg="#f0f0f0", text=text)
+
+    def _browse_files(self) -> None:
+        """Open file dialog to select CSV files."""
+        files = filedialog.askopenfilenames(
+            title="Select CSV Files",
+            filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")],
+        )
+        if files:
+            self._load_files(list(files))
+
+    def _load_files(self, file_paths: list[str]) -> None:
+        """Load CSV files from the given paths."""
         try:
-            self.df = load_all_csvs("data")
-            items = get_unique_values(self.df, "Item")
+            new_df = load_csvs_from_paths(file_paths)
 
-            self.items_listbox.delete(0, tk.END)
-            for item in items:
-                self.items_listbox.insert(tk.END, item)
+            # Add to existing data or replace
+            if self.df is not None:
+                # Append new files, avoiding duplicates based on source_file
+                existing_sources = set(self.df["source_file"].unique())
+                new_sources = set(new_df["source_file"].unique())
+                truly_new = new_sources - existing_sources
 
-            row_count = len(self.df)
-            self.status_label.config(
-                text=f"Loaded {row_count} transactions, {len(items)} unique items"
-            )
+                if truly_new:
+                    new_rows = new_df[new_df["source_file"].isin(truly_new)]
+                    self.df = pd.concat([self.df, new_rows], ignore_index=True)
+                    self.loaded_files.extend(
+                        [f for f in file_paths if any(s in f for s in truly_new)]
+                    )
+            else:
+                self.df = new_df
+                self.loaded_files = list(file_paths)
+
+            self._update_items_list()
+            self._update_status()
+
         except FileNotFoundError as e:
             messagebox.showerror("Error", str(e))
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load data: {e}")
+
+    def _clear_data(self) -> None:
+        """Clear all loaded data."""
+        self.df = None
+        self.loaded_files = []
+        self.items_listbox.delete(0, tk.END)
+        self.status_label.config(text="No data loaded")
+        self._reset_drop_zone()
+
+    def _update_items_list(self) -> None:
+        """Update the items listbox with current data."""
+        if self.df is None:
+            return
+
+        items = get_unique_values(self.df, "Item")
+        self.items_listbox.delete(0, tk.END)
+
+        for item in items:
+            category = self.calculator.get_category_for_item(item)
+            display_text = f"{item} [{category}]" if category else item
+            self.items_listbox.insert(tk.END, display_text)
+
+    def _update_status(self) -> None:
+        """Update the status label with current data info."""
+        if self.df is None:
+            self.status_label.config(text="No data loaded")
+            return
+
+        row_count = len(self.df)
+        file_count = len(self.loaded_files)
+        items = get_unique_values(self.df, "Item")
+        self.status_label.config(
+            text=f"Loaded {file_count} file(s), {row_count} transactions, {len(items)} unique items"
+        )
 
     def _assign_items(self) -> None:
         """Assign selected items to the chosen category."""
@@ -153,7 +326,7 @@ class TaximateGUI:
             messagebox.showwarning("Warning", "Please select items to assign")
             return
 
-        category = self.category_var.get()
+        category = self.category_combo.get()
         if not category:
             messagebox.showwarning("Warning", "Please select a category")
             return
@@ -187,20 +360,11 @@ class TaximateGUI:
 
     def _update_item_display(self) -> None:
         """Update the items listbox to show category assignments."""
-        if self.df is None:
-            return
-
-        items = get_unique_values(self.df, "Item")
-        self.items_listbox.delete(0, tk.END)
-
-        for item in items:
-            category = self.calculator.get_category_for_item(item)
-            display_text = f"{item} [{category}]" if category else item
-            self.items_listbox.insert(tk.END, display_text)
+        self._update_items_list()
 
     def _on_category_selected(self, _event: tk.Event[tk.Widget] | None = None) -> None:
         """Handle category selection - update description and contents."""
-        category = self.category_var.get()
+        category = self.category_combo.get()
         if category and category in self.calculator.categories:
             desc = self.calculator.categories[category].description
             self.category_desc_label.config(text=desc)
@@ -210,7 +374,7 @@ class TaximateGUI:
 
     def _update_category_contents(self, _event: tk.Event[tk.Widget] | None = None) -> None:
         """Update the category contents display."""
-        category = self.category_var.get()
+        category = self.category_combo.get()
         if not category or category not in self.calculator.categories:
             return
 

@@ -1,15 +1,18 @@
 # Taximate
 
-A Python application that imports transaction data from EveryDollar CSV exports and calculates self-employment taxes including sales tax, sole proprietor tax, federal and state income taxes.
+A Python GUI application that imports transaction data from EveryDollar CSV exports and calculates self-employment taxes including sales tax, sole proprietor tax, federal and state income taxes.
 
 ## Features
 
-- Load and combine multiple CSV transaction files
-- GUI for categorizing transactions into income/expense types
-- Progressive tax bracket calculations for federal and California state income tax
-- Self-employment tax with Social Security wage base cap
-- Configurable tax rates stored in CSV files
-- Shows total take-home pay and gross revenue
+- **Drag-and-drop file loading** - Drop multiple CSV files directly onto the app (macOS)
+- **Multi-file support** - Load and combine multiple CSV transaction files at once
+- **File browser** - Select CSV files from anywhere on your system
+- **Transaction categorization** - GUI for categorizing transactions into income/expense types
+- **Progressive tax brackets** - Federal and California state income tax calculations
+- **Self-employment tax** - Social Security and Medicare with wage base cap
+- **Configurable tax rates** - Tax rates stored in editable CSV files
+- **Annual projections** - Extrapolate partial year data to annual estimates
+- **Take-home calculation** - Shows total take-home pay and gross revenue
 
 ## Installation
 
@@ -20,15 +23,21 @@ uv sync
 ## Usage
 
 1. Export your EveryDollar transactions as CSV files
-2. Place the CSV files in the `data/` folder
-3. Run the application:
+2. Run the application:
 
 ```bash
+make run
+# or
 uv run python main.py
 ```
 
-4. Click "Load CSV Data" to import transactions
-5. Select items and assign them to the appropriate income/expense categories
+3. Load your CSV files using one of these methods:
+   - **Drag and drop** multiple CSV files onto the drop zone (macOS)
+   - **Click "Browse Files"** to select files from anywhere on your system
+   - Files can be loaded incrementally - new files are added to existing data
+
+4. Select items in the left panel and assign them to income/expense categories
+5. Set the number of months your data covers (for annual projections)
 6. Click "Calculate Taxes" to see your tax summary
 
 ## Income Categories
@@ -79,27 +88,42 @@ To update tax rates, edit these CSV files directly.
 
 ```
 taximate/
-├── main.py              # Entry point
-├── pyproject.toml       # Dependencies
-├── Makefile             # Build commands
-├── data/                # CSV transaction files
-├── test_data/           # Sample test data
-├── tax_rates/           # Tax rate CSV files
+├── main.py              # Application entry point
+├── pyproject.toml       # Project dependencies and metadata
+├── Makefile             # Build and development commands
+├── data/                # Sample CSV transaction files
+├── tax_rates/           # Tax rate configuration CSV files
+│   ├── federal_income_tax_2025.csv
+│   ├── california_income_tax_2024.csv
+│   ├── self_employment_tax_2025.csv
+│   └── sales_tax_2025.csv
 └── src/
-    ├── data_loader.py   # CSV loading utilities
-    ├── tax_calculator.py # Tax calculation logic
-    └── gui.py           # Tkinter GUI
+    ├── __init__.py      # Package initialization
+    ├── data_loader.py   # CSV file loading and parsing
+    ├── tax_calculator.py # Tax calculation engine
+    └── gui.py           # Tkinter GUI with drag-and-drop support
 ```
 
 ## Development
 
 ```bash
-make install   # Install dependencies
-make run       # Run the application
-make format    # Format code with ruff
-make check     # Lint and type check
-make clean     # Remove .venv and caches
+make install      # Install dependencies
+make run          # Run the application
+make format       # Format code with ruff
+make check        # Lint and type check
+make clean        # Remove .venv and caches
+make clean-build  # Remove PyInstaller build artifacts
 ```
+
+## Building for macOS
+
+To create a standalone macOS application:
+
+```bash
+make build-mac
+```
+
+This creates `dist/Taximate.app` which can be distributed to users without requiring Python installation. The app bundle includes all dependencies and tax rate data files.
 
 ## Data Sources
 
