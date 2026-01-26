@@ -5,6 +5,9 @@ on:
     tags:
       - "v*"
 
+permissions:
+  contents: write
+
 jobs:
   release:
     strategy:
@@ -54,11 +57,25 @@ jobs:
         run: |
           codesign --deep --force --sign - dist/*.app
 
+      - name: Package macOS app
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          mkdir -p release
+          ditto -c -k --sequesterRsrc --keepParent "dist/Taximate-${{ matrix.name }}.app" "release/Taximate-${{ matrix.name }}.zip"
+
+      - name: Package Windows exe
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          mkdir -p release
+          cp "dist/Taximate-windows.exe" "release/Taximate-windows.exe"
+
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
           name: Taximate-${{ matrix.name }}
-          path: dist/**
+          path: release/**
 
   publish:
     needs: release
@@ -73,5 +90,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/**/*
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
