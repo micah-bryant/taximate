@@ -36,26 +36,33 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
 
-      # Install dependencies once
       - name: Install
         run: uv sync --group dev
 
-      # On Windows, force bash so rm -rf in Makefile works predictably
       - name: Clean build outputs
         shell: bash
         run: make clean-build
 
-      - name: Build
-        if: startsWith(matrix.name, 'mac-')
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
         env:
           MACOSX_DEPLOYMENT_TARGET: "12.0"
         run: make ${{ matrix.build_target }}
 
-      # Ad-hoc sign macOS apps (reduces Gatekeeper friction)
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: make ${{ matrix.build_target }}
+
       - name: Ad-hoc sign macOS app
         if: runner.os == 'macOS'
         run: |
           codesign --deep --force --sign - dist/*.app
+
+      - name: List dist (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem dist -Recurse | Select-Object FullName
 
       - name: Package macOS app
         if: runner.os == 'macOS'
@@ -66,10 +73,10 @@ jobs:
 
       - name: Package Windows exe
         if: runner.os == 'Windows'
-        shell: bash
+        shell: pwsh
         run: |
-          mkdir -p release
-          cp "dist/Taximate-windows.exe" "release/Taximate-windows.exe"
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Copy-Item "dist\Taximate-windows.exe" "release\Taximate-windows.exe"
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
@@ -89,7 +96,10 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/**/*
+          files: |
+            artifacts/**/*.zip
+            artifacts/**/*.exe
           fail_on_unmatched_files: true
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
