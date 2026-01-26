@@ -33,10 +33,17 @@ jobs:
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
 
-      - name: Install dependencies
+      # Install dependencies once
+      - name: Install
         run: uv sync --group dev
 
+      # On Windows, force bash so rm -rf in Makefile works predictably
+      - name: Clean build outputs
+        shell: bash
+        run: make clean-build
+
       - name: Build
+        if: startsWith(matrix.name, 'mac-')
         env:
           MACOSX_DEPLOYMENT_TARGET: "12.0"
         run: make ${{ matrix.build_target }}
