@@ -140,11 +140,9 @@ This creates an executable in `dist/Taximate-windows/`. Distribute the entire fo
 
 ```
 dist/
-├── Taximate-mac-intel/
-│   └── Taximate-mac-intel.app
-├── Taximate-mac-arm64/
-│   └── Taximate-mac-arm64.app
-└── Taximate-windows/
+├── Taximate-mac-intel.app    # macOS Intel app bundle
+├── Taximate-mac-arm64.app    # macOS Apple Silicon app bundle
+└── Taximate-windows/         # Windows folder
     ├── Taximate-windows.exe
     └── (supporting files)
 ```

@@ -59,14 +59,14 @@ jobs:
       - name: Ad-hoc sign macOS app
         if: runner.os == 'macOS'
         run: |
-          codesign --deep --force --sign - "dist/Taximate-${{ matrix.name }}/Taximate-${{ matrix.name }}.app"
+          codesign --deep --force --sign - "dist/Taximate-${{ matrix.name }}.app"
 
       - name: Package macOS app
         if: runner.os == 'macOS'
         shell: bash
         run: |
           mkdir -p release
-          ditto -c -k --sequesterRsrc --keepParent "dist/Taximate-${{ matrix.name }}/Taximate-${{ matrix.name }}.app" "release/Taximate-${{ matrix.name }}.zip"
+          ditto -c -k --sequesterRsrc --keepParent "dist/Taximate-${{ matrix.name }}.app" "release/Taximate-${{ matrix.name }}.zip"
 
       - name: Package Windows exe
         if: runner.os == 'Windows'
