@@ -1,6 +1,6 @@
 [project]
 name = "taximate"
-version = "0.1.0"
+version = "0.1.1"
 description = "Import EveryDollar transactions and calculate tax deductions"
 requires-python = ">=3.12"
 dependencies = [
