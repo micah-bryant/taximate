@@ -115,15 +115,44 @@ make clean        # Remove .venv and caches
 make clean-build  # Remove PyInstaller build artifacts
 ```
 
-## Building for macOS
+## Building Standalone Executables
 
-To create a standalone macOS application:
+The application can be built as a standalone executable using PyInstaller. Builds use `--onedir` mode for faster startup times.
+
+### macOS
 
 ```bash
-make build-mac
+make build-mac-intel   # Intel Macs
+make build-mac-arm64   # Apple Silicon Macs
 ```
 
-This creates `dist/Taximate.app` which can be distributed to users without requiring Python installation. The app bundle includes all dependencies and tax rate data files.
+This creates a `.app` bundle in `dist/Taximate-mac-intel/` or `dist/Taximate-mac-arm64/`. The app can be distributed to users without requiring Python installation.
+
+### Windows
+
+```bash
+make build-windows
+```
+
+This creates an executable in `dist/Taximate-windows/`. Distribute the entire folder to users.
+
+### Build Output Structure
+
+```
+dist/
+├── Taximate-mac-intel.app    # macOS Intel app bundle
+├── Taximate-mac-arm64.app    # macOS Apple Silicon app bundle
+└── Taximate-windows/         # Windows folder
+    ├── Taximate-windows.exe
+    └── (supporting files)
+```
+
+### Build Options
+
+The build process includes optimizations for faster startup:
+- `--onedir`: Files are unpacked (no extraction delay on launch)
+- `--noupx`: Disables UPX compression (avoids decompression delay)
+- Module exclusions: Unused libraries (matplotlib, scipy, etc.) are excluded to reduce size
 
 ## Data Sources
 

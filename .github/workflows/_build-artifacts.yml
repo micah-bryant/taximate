@@ -59,7 +59,7 @@ jobs:
       - name: Ad-hoc sign macOS app
         if: runner.os == 'macOS'
         run: |
-          codesign --deep --force --sign - dist/*.app
+          codesign --deep --force --sign - "dist/Taximate-${{ matrix.name }}.app"
 
       - name: Package macOS app
         if: runner.os == 'macOS'
@@ -73,7 +73,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path release | Out-Null
-          Copy-Item "dist\Taximate-windows.exe" "release\Taximate-windows.exe"
+          Compress-Archive -Path "dist\Taximate-windows\*" -DestinationPath "release\Taximate-windows.zip"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
