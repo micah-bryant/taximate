@@ -46,9 +46,17 @@ jobs:
         shell: bash
         run: make clean-build
 
-      # Build per-OS using your Makefile targets
       - name: Build
+        if: startsWith(matrix.name, 'mac-')
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "12.0"
         run: make ${{ matrix.build_target }}
+
+
+      - name: Ad-hoc sign macOS app
+        if: runner.os == 'macOS'
+        run: |
+          codesign --deep --force --sign - dist/*.app
 
       - name: Upload dist artifacts
         uses: actions/upload-artifact@v4

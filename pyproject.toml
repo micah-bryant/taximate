@@ -5,6 +5,7 @@ description = "Import EveryDollar transactions and calculate tax deductions"
 requires-python = ">=3.12"
 dependencies = [
     "pandas>=2.0.0",
+    "numpy<2.0",
     "tkinterdnd2>=0.3.0",
 ]
 
