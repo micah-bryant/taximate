@@ -1,0 +1,82 @@
+name: _Build Artifacts
+
+on:
+  workflow_call:
+    inputs:
+      is_release:
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows
+            runs_on: windows-latest
+            build_target: build-windows
+          - name: mac-intel
+            runs_on: macos-15-intel
+            build_target: build-mac-intel
+          - name: mac-arm64
+            runs_on: macos-latest
+            build_target: build-mac-arm64
+
+    runs-on: ${{ matrix.runs_on }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install (incl. dev tools)
+        run: uv sync --group dev
+
+      - name: Clean build outputs
+        shell: bash
+        run: make clean-build
+
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
+        env:
+          MACOSX_DEPLOYMENT_TARGET: "12.0"
+        run: make ${{ matrix.build_target }}
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: make ${{ matrix.build_target }}
+
+      - name: Ad-hoc sign macOS app
+        if: runner.os == 'macOS'
+        run: |
+          codesign --deep --force --sign - dist/*.app
+
+      - name: Package macOS app
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          mkdir -p release
+          ditto -c -k --sequesterRsrc --keepParent "dist/Taximate-${{ matrix.name }}.app" "release/Taximate-${{ matrix.name }}.zip"
+
+      - name: Package Windows exe
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Copy-Item "dist\Taximate-windows.exe" "release\Taximate-windows.exe"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Taximate-${{ matrix.name }}
+          path: release/**
