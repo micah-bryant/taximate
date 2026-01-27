@@ -50,7 +50,7 @@ class TaximateGUI:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title("Taximate - Tax Calculator")
-        self.root.geometry("1200x750")
+        self.root.geometry("1250x750")
 
         self.df: pd.DataFrame | None = None
         self.calculator = TaxCalculator()
@@ -166,7 +166,7 @@ class TaximateGUI:
         right_frame = ttk.LabelFrame(main_frame, text="Tax Summary", padding="5")
         right_frame.grid(row=1, column=2, sticky="nsew", padx=(5, 0))
 
-        self.results_text = tk.Text(right_frame, width=52, height=25, state="disabled")
+        self.results_text = tk.Text(right_frame, width=58, height=25, state="disabled")
         self.results_text.pack(fill="both", expand=True)
 
         # Months input and calculate button frame
@@ -411,11 +411,11 @@ class TaximateGUI:
         self.results_text.delete(1.0, tk.END)
 
         # Header with column labels
-        self.results_text.insert(tk.END, f"{'':20} {'PERIOD':>12}  {'ANNUAL':>12}\n")
+        self.results_text.insert(tk.END, f"{'':28} {'PERIOD':>12}  {'ANNUAL':>12}\n")
         self.results_text.insert(
-            tk.END, f"{'':20} {'(' + str(months) + ' mo)':>12}  {'(12 mo)':>12}\n"
+            tk.END, f"{'':28} {'(' + str(months) + ' mo)':>12}  {'(12 mo)':>12}\n"
         )
-        self.results_text.insert(tk.END, "═" * 48 + "\n\n")
+        self.results_text.insert(tk.END, "═" * 56 + "\n\n")
 
         # Income section
         self.results_text.insert(tk.END, "─── INCOME ───\n")
@@ -450,14 +450,14 @@ class TaximateGUI:
         )
         self._insert_row("Federal Income Tax", period.federal_income_tax, annual.federal_income_tax)
         self._insert_row("State Income Tax", period.state_income_tax, annual.state_income_tax)
-        self.results_text.insert(tk.END, f"{'':20} {'─' * 12}  {'─' * 12}\n")
+        self.results_text.insert(tk.END, f"{'':28} {'─' * 12}  {'─' * 12}\n")
         self._insert_row("Total Income Tax", period.total_income_tax, annual.total_income_tax)
         self._insert_row("Total Tax", period.total_tax, annual.total_tax)
         self.results_text.insert(tk.END, "\n")
 
         # Summary section
         self.results_text.insert(tk.END, "─── SUMMARY ───\n")
-        self.results_text.insert(tk.END, f"{'':20} {'═' * 12}  {'═' * 12}\n")
+        self.results_text.insert(tk.END, f"{'':28} {'═' * 12}  {'═' * 12}\n")
         self._insert_row("TAKE HOME", period.take_home, annual.take_home)
 
         # Show uncategorized items
@@ -474,7 +474,7 @@ class TaximateGUI:
     def _insert_row(self, label: str, period_val: float, annual_val: float) -> None:
         """Insert a row with label and two value columns."""
         self.results_text.insert(
-            tk.END, f"{label:20} ${period_val:>11,.2f}  ${annual_val:>11,.2f}\n"
+            tk.END, f"{label:28} ${period_val:>11,.2f}  ${annual_val:>11,.2f}\n"
         )
 
     def run(self) -> None:
