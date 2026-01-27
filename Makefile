@@ -4,7 +4,7 @@ install:
 	uv sync
 
 run:
-	uv run python main.py
+	@QT_QPA_PLATFORM=xcb uv run python main.py
 
 format:
 	@uv run ruff check --fix

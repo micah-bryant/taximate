@@ -1,12 +1,12 @@
 [project]
 name = "taximate"
-version = "0.1.2"
+version = "0.2.0"
 description = "Import EveryDollar transactions and calculate tax deductions"
 requires-python = ">=3.12"
 dependencies = [
     "pandas>=2.0.0",
     "numpy<2.0",
-    "tkinterdnd2>=0.3.0",
+    "PySide6>=6.6.0,<6.8",
 ]
 
 [dependency-groups]

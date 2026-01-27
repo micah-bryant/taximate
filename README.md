@@ -4,20 +4,29 @@ A Python GUI application that imports transaction data from EveryDollar CSV expo
 
 ## Features
 
-- **Drag-and-drop file loading** - Drop multiple CSV files directly onto the app (macOS)
+- **Modern PySide6 GUI** - Clean, modern interface with color-coded buttons and styled widgets
+- **Drag-and-drop file loading** - Drop multiple CSV files directly onto the app
 - **Multi-file support** - Load and combine multiple CSV transaction files at once
 - **File browser** - Select CSV files from anywhere on your system
-- **Transaction categorization** - GUI for categorizing transactions into income/expense types
+- **Transaction categorization** - Assign transactions to income/expense categories
+- **Side-by-side comparison** - View current period and annualized tax calculations together
 - **Progressive tax brackets** - Federal and California state income tax calculations
 - **Self-employment tax** - Social Security and Medicare with wage base cap
 - **Configurable tax rates** - Tax rates stored in editable CSV files
 - **Annual projections** - Extrapolate partial year data to annual estimates
-- **Take-home calculation** - Shows total take-home pay and gross revenue
 
 ## Installation
 
 ```bash
 uv sync
+```
+
+### Linux/WSL Requirements
+
+On Linux or WSL, you may need to install Qt system dependencies:
+
+```bash
+sudo apt install -y libegl1 libxkbcommon0 libxcb-cursor0
 ```
 
 ## Usage
@@ -32,22 +41,47 @@ uv run python main.py
 ```
 
 3. Load your CSV files using one of these methods:
-   - **Drag and drop** multiple CSV files onto the drop zone (macOS)
+   - **Drag and drop** multiple CSV files onto the drop zone
    - **Click "Browse Files"** to select files from anywhere on your system
    - Files can be loaded incrementally - new files are added to existing data
 
 4. Select items in the left panel and assign them to income/expense categories
 5. Set the number of months your data covers (for annual projections)
-6. Click "Calculate Taxes" to see your tax summary
+6. Click "Calculate Taxes" to see your tax summary with period and annualized columns
 
 ## Income Categories
 
 | Category | Description |
 |----------|-------------|
-| **Gigs (Tax Already Paid)** | Income where sales tax and income tax are already withheld (e.g., W-2 gig work) |
-| **Revenue (No Sales Tax)** | Business revenue that needs sales tax calculated |
-| **Revenue (Sales Tax Included)** | Business revenue where sales tax is already included |
+| **Freelance (Tax Already Paid)** | Income where taxes are already withheld (e.g., W-2 gig work) |
+| **Revenue (Sales Tax Bundled)** | Business revenue with sales tax included in the price |
+| **Revenue (Sales Tax Applied)** | Business revenue where sales tax was collected separately |
 | **Business Expenses** | Deductible business expenses |
+
+## Tax Summary Display
+
+The tax summary shows two columns side-by-side:
+- **Period** - Actual values for the months of data loaded
+- **Annual** - Projected values extrapolated to 12 months
+
+```
+                            PERIOD        ANNUAL
+                            (6 mo)       (12 mo)
+========================================================
+
+--- INCOME ---
+Freelance (Tax Already Paid) $  5,000.00  $ 10,000.00
+Revenue (Sales Tax Bundled)  $ 12,000.00  $ 24,000.00
+...
+
+--- TAXES ---
+Sales Tax (7.75%)            $    862.07  $  1,724.14
+Self-Employment Tax          $  1,847.23  $  3,694.46
+...
+
+--- SUMMARY ---
+TAKE HOME                    $ 11,234.56  $ 22,469.12
+```
 
 ## Tax Calculations
 
@@ -62,14 +96,14 @@ Taxes are calculated using progressive brackets loaded from CSV files:
 
 ### Calculation Flow
 
-1. **Sales Tax Due** = Revenue (No Sales Tax) × Sales Tax Rate
-2. **Profit** = (Revenue No Tax - Sales Tax) + Revenue With Tax - Expenses
-3. **Self-Employment Tax** = (Profit × 92.35%) × (12.4% SS + 2.9% Medicare)
-4. **Taxable Income** = Profit - (SE Tax × 50%)
-5. **Federal Income Tax** = Progressive bracket calculation on Taxable Income
-6. **State Income Tax** = Progressive bracket calculation on Taxable Income
-7. **Total Tax** = SE Tax + Federal Tax + State Tax
-8. **Take Home** = Profit + Gigs - Total Tax
+1. **Sales Tax** = Revenue (Bundled) / (1 + rate) × rate
+2. **Business Profit** = Sales Taxable + Revenue (Applied) - Expenses
+3. **Total Profit** = Business Profit + Freelance Income
+4. **Self-Employment Tax** = (Business Profit × 92.35%) × (12.4% SS + 2.9% Medicare)
+5. **Taxable Income** = Business Profit - (SE Tax × 50%)
+6. **Federal Income Tax** = Progressive bracket calculation
+7. **State Income Tax** = Progressive bracket calculation
+8. **Take Home** = Total Profit - Total Income Tax
 
 ## Tax Rates Configuration
 
@@ -101,7 +135,7 @@ taximate/
     ├── __init__.py      # Package initialization
     ├── data_loader.py   # CSV file loading and parsing
     ├── tax_calculator.py # Tax calculation engine
-    └── gui.py           # Tkinter GUI with drag-and-drop support
+    └── gui.py           # PySide6 GUI with modern styling
 ```
 
 ## Development
