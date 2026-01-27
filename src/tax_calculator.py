@@ -28,7 +28,7 @@ import pandas as pd
 # Income category type constants
 CATEGORY_FREELANCE = "Freelance (Tax Already Paid)"
 CATEGORY_REVENUE_SALES_TAX_BUNDLED = "Revenue (Sales Tax Bundled)"
-CATEGORY_REVENUE_SALES_TAX_APPLIED = "Revenue (Sales Tax applied)"
+CATEGORY_REVENUE_SALES_TAX_APPLIED = "Revenue (Sales Tax Applied)"
 CATEGORY_EXPENSES = "Business Expenses"
 
 
@@ -62,9 +62,11 @@ class IncomeCategory:
     description: str
     items: list[str] = field(default_factory=list)
 
+
 @dataclass(frozen=True, slots=True)
 class TaxInputs:
     """Represents categories for tax calculations"""
+
     all_tax_applied: float
     sales_tax_bundled: float
     sales_tax_applied: float
@@ -78,7 +80,8 @@ class TaxInputs:
             sales_tax_applied=self.sales_tax_applied * factor,
             expenses=self.expenses * factor,
         )
-    
+
+
 @dataclass(frozen=True, slots=True)
 class TaxResults:
     all_tax_applied: float
@@ -336,13 +339,11 @@ class TaxCalculator:
         """Get the category name for an item."""
         return self.item_to_category.get(item)
 
-    def calculate_taxes(
-        self, inputs: TaxInputs
-    ) -> TaxResults:
+    def calculate_taxes(self, inputs: TaxInputs) -> TaxResults:
         """Core tax calculator given category totals (already aggregated)."""
         # Backcalculate how much sales tax in included in the sales_tax_bundled
-        sales_tax = inputs.sales_tax_bundled / (1 + self.tax_rates.sales_tax_rate)
-        sales_taxable = inputs.sales_tax_bundled - sales_tax
+        sales_taxable = inputs.sales_tax_bundled / (1 + self.tax_rates.sales_tax_rate)
+        sales_tax = inputs.sales_tax_bundled - sales_taxable
 
         # Calculate how much profit from hustles and main business
         business_profit = sales_taxable + inputs.sales_tax_applied - inputs.expenses
@@ -384,19 +385,20 @@ class TaxCalculator:
             total_tax=total_tax,
             take_home=take_home,
             gross_business_revenue=gross_business_revenue,
-            gross_revenue=gross_revenue
+            gross_revenue=gross_revenue,
         )
-    
+
     def extract_period_totals(self, df: pd.DataFrame) -> TaxInputs:
         return TaxInputs(
             all_tax_applied=self._get_category_total(df, CATEGORY_FREELANCE),
             sales_tax_bundled=self._get_category_total(df, CATEGORY_REVENUE_SALES_TAX_BUNDLED),
             sales_tax_applied=self._get_category_total(df, CATEGORY_REVENUE_SALES_TAX_APPLIED),
-            expenses=abs(self._get_category_total(df, CATEGORY_EXPENSES))
+            expenses=abs(self._get_category_total(df, CATEGORY_EXPENSES)),
         )
 
-
-    def generate_summary(self, df: pd.DataFrame, months: int = 12) -> dict[str, float]:
+    def generate_summary(
+        self, df: pd.DataFrame, months: int = 12
+    ) -> dict[str, TaxInputs | TaxResults | float]:
         """Generate a complete tax summary with optional annualization."""
         # Collect all the data needed for calculation
         tax_inputs = self.extract_period_totals(df)
