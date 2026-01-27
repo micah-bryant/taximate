@@ -29,7 +29,7 @@ except (ImportError, RuntimeError):
     DND_FILES = None
 
 from .data_loader import get_unique_values, load_csvs_from_paths
-from .tax_calculator import TaxCalculator
+from .tax_calculator import TaxCalculator, TaxResults
 
 
 class TaximateGUI:
@@ -50,7 +50,7 @@ class TaximateGUI:
     def __init__(self, root: tk.Tk) -> None:
         self.root = root
         self.root.title("Taximate - Tax Calculator")
-        self.root.geometry("1100x750")
+        self.root.geometry("1250x750")
 
         self.df: pd.DataFrame | None = None
         self.calculator = TaxCalculator()
@@ -166,7 +166,7 @@ class TaximateGUI:
         right_frame = ttk.LabelFrame(main_frame, text="Tax Summary", padding="5")
         right_frame.grid(row=1, column=2, sticky="nsew", padx=(5, 0))
 
-        self.results_text = tk.Text(right_frame, width=38, height=25, state="disabled")
+        self.results_text = tk.Text(right_frame, width=58, height=25, state="disabled")
         self.results_text.pack(fill="both", expand=True)
 
         # Months input and calculate button frame
@@ -400,68 +400,65 @@ class TaximateGUI:
         # Get months from spinbox
         try:
             months = int(self.months_var.get())
-            if months < 1 or months > 12:
-                months = 12
         except ValueError:
             months = 12
 
         summary = self.calculator.generate_summary(self.df, months)
+        period: TaxResults = summary["period_taxes"]
+        annual: TaxResults = summary["annual_taxes"]
 
         self.results_text.config(state="normal")
         self.results_text.delete(1.0, tk.END)
 
-        self.results_text.insert(tk.END, f"══ TAX SUMMARY ({months} mo) ══\n\n")
+        # Header with column labels
+        self.results_text.insert(tk.END, f"{'':28} {'PERIOD':>12}  {'ANNUAL':>12}\n")
+        self.results_text.insert(
+            tk.END, f"{'':28} {'(' + str(months) + ' mo)':>12}  {'(12 mo)':>12}\n"
+        )
+        self.results_text.insert(tk.END, "═" * 56 + "\n\n")
 
-        # Period totals
-        self.results_text.insert(tk.END, f"─── {months}-MONTH TOTALS ───\n")
-        self.results_text.insert(tk.END, f"Gigs (tax paid):      ${summary['gigs']:>12,.2f}\n")
-        self.results_text.insert(
-            tk.END, f"Revenue (no tax):     ${summary['revenue_no_sales_tax']:>12,.2f}\n"
+        # Income section
+        self.results_text.insert(tk.END, "─── INCOME ───\n")
+        self._insert_row(
+            "Freelance (Tax Already Paid)", period.all_tax_applied, annual.all_tax_applied
         )
-        self.results_text.insert(
-            tk.END, f"Revenue (w/ tax):     ${summary['revenue_with_sales_tax']:>12,.2f}\n"
+        self._insert_row(
+            "Revenue (Sales Tax Bundled)", period.sales_tax_bundled, annual.sales_tax_bundled
         )
-        self.results_text.insert(tk.END, f"Expenses:             ${summary['expenses']:>12,.2f}\n")
-        self.results_text.insert(
-            tk.END, f"Sales Tax Due:        ${summary['sales_tax_due']:>12,.2f}\n"
+        self._insert_row(
+            "Revenue (Sales Tax Applied)", period.sales_tax_applied, annual.sales_tax_applied
         )
-        self.results_text.insert(tk.END, f"Business Profit:      ${summary['profit']:>12,.2f}\n")
+        self._insert_row("Business Expenses", -period.expenses, -annual.expenses)
+        self.results_text.insert(tk.END, "\n")
 
-        # Annual projections
-        self.results_text.insert(tk.END, "\n─── ANNUAL PROJECTION ───\n")
-        self.results_text.insert(
-            tk.END, f"Projected Profit:     ${summary['annual_profit']:>12,.2f}\n"
-        )
-        self.results_text.insert(
-            tk.END, f"Taxable Income:       ${summary['annual_taxable_income']:>12,.2f}\n"
-        )
+        # Business calculations
+        self.results_text.insert(tk.END, "─── PROFIT ───\n")
+        self._insert_row("Gross Revenue", period.gross_revenue, annual.gross_revenue)
+        self._insert_row("Business Profit", period.business_profit, annual.business_profit)
+        self._insert_row("Total Profit", period.profit, annual.profit)
+        self._insert_row("Sales Taxable Income", period.sales_taxable, annual.sales_taxable)
+        self._insert_row("Taxable Income", period.taxable_income, annual.taxable_income)
+        self.results_text.insert(tk.END, "\n")
 
-        self.results_text.insert(tk.END, "\n─── ESTIMATED TAXES ───\n")
-        self.results_text.insert(
-            tk.END, f"Sales Tax Due:        ${summary['annual_sales_tax_due']:>12,.2f}\n"
+        # Taxes section
+        self.results_text.insert(tk.END, "─── TAXES ───\n")
+        self._insert_row(
+            f"Sales Tax ({period.sales_tax_rate * 100:.2f}%)", period.sales_tax, annual.sales_tax
         )
-        self.results_text.insert(
-            tk.END, f"Self-Employment Tax:  ${summary['annual_sole_proprietor_tax']:>12,.2f}\n"
+        self._insert_row(
+            "Self-Employment Tax", period.sole_proprietor_tax, annual.sole_proprietor_tax
         )
-        self.results_text.insert(
-            tk.END, f"Federal Income Tax:   ${summary['annual_federal_income_tax']:>12,.2f}\n"
-        )
-        self.results_text.insert(
-            tk.END, f"State Income Tax:     ${summary['annual_state_income_tax']:>12,.2f}\n"
-        )
-        self.results_text.insert(tk.END, "                      ─────────────\n")
-        self.results_text.insert(
-            tk.END, f"Total Income Tax:     ${summary['annual_total_income_tax']:>12,.2f}\n"
-        )
+        self._insert_row("Federal Income Tax", period.federal_income_tax, annual.federal_income_tax)
+        self._insert_row("State Income Tax", period.state_income_tax, annual.state_income_tax)
+        self.results_text.insert(tk.END, f"{'':28} {'─' * 12}  {'─' * 12}\n")
+        self._insert_row("Total Income Tax", period.total_income_tax, annual.total_income_tax)
+        self._insert_row("Total Tax", period.total_tax, annual.total_tax)
+        self.results_text.insert(tk.END, "\n")
 
-        self.results_text.insert(tk.END, "\n─── ANNUAL SUMMARY ───\n")
-        self.results_text.insert(
-            tk.END, f"Gross Revenue:        ${summary['annual_gross_revenue']:>12,.2f}\n"
-        )
-        self.results_text.insert(tk.END, "                      ═════════════\n")
-        self.results_text.insert(
-            tk.END, f"EST. TAKE HOME:       ${summary['annual_take_home']:>12,.2f}\n"
-        )
+        # Summary section
+        self.results_text.insert(tk.END, "─── SUMMARY ───\n")
+        self.results_text.insert(tk.END, f"{'':28} {'═' * 12}  {'═' * 12}\n")
+        self._insert_row("TAKE HOME", period.take_home, annual.take_home)
 
         # Show uncategorized items
         uncategorized = self.calculator.get_uncategorized_items(self.df)
@@ -473,6 +470,12 @@ class TaximateGUI:
                 self.results_text.insert(tk.END, f"  ... +{len(uncategorized) - 6} more\n")
 
         self.results_text.config(state="disabled")
+
+    def _insert_row(self, label: str, period_val: float, annual_val: float) -> None:
+        """Insert a row with label and two value columns."""
+        self.results_text.insert(
+            tk.END, f"{label:28} ${period_val:>11,.2f}  ${annual_val:>11,.2f}\n"
+        )
 
     def run(self) -> None:
         """Start the GUI main loop."""
