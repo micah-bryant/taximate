@@ -1,23 +1,50 @@
 """PySide6 GUI for Taximate tax calculation application.
 
 This module provides the main graphical user interface for Taximate, featuring:
+- Modern styled interface with color-coded buttons and hover effects
 - Drag-and-drop CSV file loading
 - Multi-file selection via file browser dialog
 - Transaction item categorization with visual feedback
-- Real-time tax calculation and summary display
-- Annual projection based on partial year data
+- Real-time tax calculation with side-by-side period/annual comparison
+- Version display from package metadata
 
 The GUI uses a three-panel layout:
 - Left: Transaction items list with category indicators
 - Center: Category assignment controls and category contents
-- Right: Tax calculation summary and results
+- Right: Tax calculation summary with period and annualized columns
+
+Styling:
+    The interface uses a modern color scheme with:
+    - Primary (blue): Default action buttons
+    - Secondary (gray): Alternative actions
+    - Success (green): Positive actions (assign, calculate)
+    - Danger (red): Destructive actions (clear data)
+
+Functions:
+    get_version: Get package version from metadata.
+    run_app: Create and launch the application.
+
+Classes:
+    DropZone: Drag-and-drop area for CSV files.
+    TaximateGUI: Main application window.
 """
 
 from __future__ import annotations
 
 import sys
+from importlib.metadata import PackageNotFoundError, version
 
 import pandas as pd
+
+
+def get_version() -> str:
+    """Get the package version, defaulting to 'dev' if not installed."""
+    try:
+        return version("taximate")
+    except PackageNotFoundError:
+        return "dev"
+
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QDragEnterEvent, QDropEvent, QFont
 from PySide6.QtWidgets import (
@@ -41,29 +68,252 @@ from PySide6.QtWidgets import (
 from .data_loader import get_unique_values, load_csvs_from_paths
 from .tax_calculator import TaxCalculator, TaxResults
 
+# Modern color scheme based on Tailwind CSS color palette
+COLORS: dict[str, str] = {
+    "primary": "#2563eb",  # Blue
+    "primary_hover": "#1d4ed8",
+    "primary_pressed": "#1e40af",
+    "secondary": "#64748b",  # Slate
+    "secondary_hover": "#475569",
+    "success": "#16a34a",  # Green
+    "success_hover": "#15803d",
+    "danger": "#dc2626",  # Red
+    "background": "#f8fafc",
+    "surface": "#ffffff",
+    "border": "#e2e8f0",
+    "text": "#1e293b",
+    "text_muted": "#64748b",
+}
+
+# Qt stylesheet for modern widget appearance with hover/pressed states
+STYLESHEET: str = f"""
+    QWidget {{
+        background-color: {COLORS["background"]};
+        color: {COLORS["text"]};
+        font-family: "Segoe UI", "SF Pro Display", system-ui, sans-serif;
+        font-size: 13px;
+    }}
+
+    QPushButton {{
+        background-color: {COLORS["primary"]};
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 8px 16px;
+        font-weight: 500;
+    }}
+
+    QPushButton:hover {{
+        background-color: {COLORS["primary_hover"]};
+    }}
+
+    QPushButton:pressed {{
+        background-color: {COLORS["primary_pressed"]};
+    }}
+
+    QPushButton:disabled {{
+        background-color: {COLORS["border"]};
+        color: {COLORS["text_muted"]};
+    }}
+
+    QPushButton#secondaryButton {{
+        background-color: {COLORS["surface"]};
+        color: {COLORS["text"]};
+        border: 1px solid {COLORS["border"]};
+    }}
+
+    QPushButton#secondaryButton:hover {{
+        background-color: {COLORS["background"]};
+        border-color: {COLORS["secondary"]};
+    }}
+
+    QPushButton#dangerButton {{
+        background-color: {COLORS["danger"]};
+    }}
+
+    QPushButton#dangerButton:hover {{
+        background-color: #b91c1c;
+    }}
+
+    QPushButton#successButton {{
+        background-color: {COLORS["success"]};
+    }}
+
+    QPushButton#successButton:hover {{
+        background-color: {COLORS["success_hover"]};
+    }}
+
+    QGroupBox {{
+        background-color: {COLORS["surface"]};
+        border: 1px solid {COLORS["border"]};
+        border-radius: 8px;
+        margin-top: 12px;
+        padding: 12px;
+        font-weight: 600;
+    }}
+
+    QGroupBox::title {{
+        subcontrol-origin: margin;
+        subcontrol-position: top left;
+        left: 12px;
+        padding: 0 8px;
+        color: {COLORS["text"]};
+        background-color: {COLORS["surface"]};
+    }}
+
+    QListWidget {{
+        background-color: {COLORS["surface"]};
+        border: 1px solid {COLORS["border"]};
+        border-radius: 6px;
+        padding: 4px;
+        outline: none;
+    }}
+
+    QListWidget::item {{
+        padding: 8px 12px;
+        border-radius: 4px;
+        margin: 2px 0;
+    }}
+
+    QListWidget::item:hover {{
+        background-color: {COLORS["background"]};
+    }}
+
+    QListWidget::item:selected {{
+        background-color: {COLORS["primary"]};
+        color: white;
+    }}
+
+    QComboBox {{
+        background-color: {COLORS["surface"]};
+        border: 1px solid {COLORS["border"]};
+        border-radius: 6px;
+        padding: 8px 12px;
+        min-width: 200px;
+    }}
+
+    QComboBox:hover {{
+        border-color: {COLORS["primary"]};
+    }}
+
+    QComboBox::drop-down {{
+        border: none;
+        width: 24px;
+    }}
+
+    QComboBox::down-arrow {{
+        image: none;
+        border-left: 5px solid transparent;
+        border-right: 5px solid transparent;
+        border-top: 6px solid {COLORS["secondary"]};
+        margin-right: 8px;
+    }}
+
+    QComboBox QAbstractItemView {{
+        background-color: {COLORS["surface"]};
+        border: 1px solid {COLORS["border"]};
+        border-radius: 6px;
+        selection-background-color: {COLORS["primary"]};
+        selection-color: white;
+        padding: 4px;
+    }}
+
+    QTextEdit {{
+        background-color: {COLORS["surface"]};
+        border: 1px solid {COLORS["border"]};
+        border-radius: 6px;
+        padding: 8px;
+        selection-background-color: {COLORS["primary"]};
+        selection-color: white;
+    }}
+
+    QSpinBox {{
+        background-color: {COLORS["surface"]};
+        border: 1px solid {COLORS["border"]};
+        border-radius: 6px;
+        padding: 6px 8px;
+    }}
+
+    QSpinBox:hover {{
+        border-color: {COLORS["primary"]};
+    }}
+
+    QSpinBox::up-button, QSpinBox::down-button {{
+        border: none;
+        width: 20px;
+    }}
+
+    QLabel {{
+        background-color: transparent;
+    }}
+
+    QScrollBar:vertical {{
+        background-color: {COLORS["background"]};
+        width: 12px;
+        border-radius: 6px;
+    }}
+
+    QScrollBar::handle:vertical {{
+        background-color: {COLORS["border"]};
+        border-radius: 6px;
+        min-height: 30px;
+    }}
+
+    QScrollBar::handle:vertical:hover {{
+        background-color: {COLORS["secondary"]};
+    }}
+
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+        height: 0;
+    }}
+
+    QMessageBox {{
+        background-color: {COLORS["surface"]};
+    }}
+
+    QMessageBox QPushButton {{
+        min-width: 80px;
+    }}
+"""
+
 
 class DropZone(QLabel):
     """A label that accepts drag-and-drop of CSV files."""
+
+    DEFAULT_STYLE = f"""
+        QLabel {{
+            background-color: {COLORS["surface"]};
+            border: 2px dashed {COLORS["border"]};
+            border-radius: 8px;
+            color: {COLORS["text_muted"]};
+            font-weight: 500;
+        }}
+    """
+
+    HOVER_STYLE = f"""
+        QLabel {{
+            background-color: #eff6ff;
+            border: 2px dashed {COLORS["primary"]};
+            border-radius: 8px;
+            color: {COLORS["primary"]};
+            font-weight: 500;
+        }}
+    """
 
     def __init__(self, parent: TaximateGUI) -> None:
         super().__init__("Drop CSV files here\nor click Browse")
         self.parent_gui = parent
         self.setAcceptDrops(True)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setFixedSize(220, 50)
-        self.setStyleSheet(
-            "QLabel { background-color: #f0f0f0; border: 2px dashed #aaa; "
-            "border-radius: 5px; }"
-        )
+        self.setFixedSize(220, 56)
+        self.setStyleSheet(self.DEFAULT_STYLE)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         """Accept drag events with file URLs."""
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
-            self.setStyleSheet(
-                "QLabel { background-color: #d0e8ff; border: 2px dashed #0078d4; "
-                "border-radius: 5px; }"
-            )
+            self.setStyleSheet(self.HOVER_STYLE)
             self.setText("Release to load files")
 
     def dragLeaveEvent(self, _event: QDragEnterEvent) -> None:
@@ -90,10 +340,11 @@ class DropZone(QLabel):
     def _reset_style(self) -> None:
         """Reset to default appearance."""
         self.setText("Drop CSV files here\nor click Browse")
-        self.setStyleSheet(
-            "QLabel { background-color: #f0f0f0; border: 2px dashed #aaa; "
-            "border-radius: 5px; }"
-        )
+        self.setStyleSheet(self.DEFAULT_STYLE)
+
+    def mousePressEvent(self, _event: QDragEnterEvent) -> None:
+        """Handle click to browse files."""
+        self.parent_gui._browse_files()
 
 
 class TaximateGUI(QWidget):
@@ -128,10 +379,12 @@ class TaximateGUI(QWidget):
         top_layout.addWidget(self.drop_zone)
 
         self.browse_btn = QPushButton("Browse Files")
+        self.browse_btn.setObjectName("secondaryButton")
         self.browse_btn.clicked.connect(self._browse_files)
         top_layout.addWidget(self.browse_btn)
 
         self.clear_btn = QPushButton("Clear Data")
+        self.clear_btn.setObjectName("dangerButton")
         self.clear_btn.clicked.connect(self._clear_data)
         top_layout.addWidget(self.clear_btn)
 
@@ -168,15 +421,17 @@ class TaximateGUI(QWidget):
 
         self.category_desc_label = QLabel()
         self.category_desc_label.setWordWrap(True)
-        self.category_desc_label.setStyleSheet("color: gray;")
+        self.category_desc_label.setStyleSheet(f"color: {COLORS['text_muted']};")
         self.category_desc_label.setMaximumWidth(280)
         cat_layout.addWidget(self.category_desc_label)
 
         self.assign_btn = QPushButton("Assign Selected Items")
+        self.assign_btn.setObjectName("successButton")
         self.assign_btn.clicked.connect(self._assign_items)
         cat_layout.addWidget(self.assign_btn)
 
         self.unassign_btn = QPushButton("Remove from Category")
+        self.unassign_btn.setObjectName("secondaryButton")
         self.unassign_btn.clicked.connect(self._unassign_items)
         cat_layout.addWidget(self.unassign_btn)
 
@@ -215,10 +470,11 @@ class TaximateGUI(QWidget):
         self.months_spinbox = QSpinBox()
         self.months_spinbox.setRange(1, 12)
         self.months_spinbox.setValue(12)
-        self.months_spinbox.setFixedWidth(50)
+        self.months_spinbox.setFixedWidth(55)
         calc_layout.addWidget(self.months_spinbox)
 
         self.calc_btn = QPushButton("Calculate Taxes")
+        self.calc_btn.setObjectName("successButton")
         self.calc_btn.clicked.connect(self._calculate_taxes)
         calc_layout.addWidget(self.calc_btn)
 
@@ -228,6 +484,12 @@ class TaximateGUI(QWidget):
         content_layout.addWidget(right_group, 1)
 
         main_layout.addLayout(content_layout, 1)
+
+        # Version label at bottom
+        version_label = QLabel(f"Taximate v{get_version()}")
+        version_label.setStyleSheet(f"color: {COLORS['text_muted']}; font-size: 11px;")
+        version_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        main_layout.addWidget(version_label)
 
     def _browse_files(self) -> None:
         """Open file dialog to select CSV files."""
@@ -457,6 +719,7 @@ class TaximateGUI(QWidget):
 def run_app() -> None:
     """Create and run the application."""
     app = QApplication(sys.argv)
+    app.setStyleSheet(STYLESHEET)
     window = TaximateGUI()
     window.show()
     sys.exit(app.exec())

@@ -13,6 +13,8 @@ easy to update for new tax years or different jurisdictions.
 Classes:
     TaxBracket: Represents a single progressive tax bracket.
     IncomeCategory: Groups transaction items into income/expense categories.
+    TaxInputs: Input values aggregated from transaction categories.
+    TaxResults: Complete tax calculation results with all computed values.
     TaxRates: Loads and manages tax rates from CSV files.
     TaxCalculator: Main calculation engine for computing taxes.
 """
@@ -65,7 +67,14 @@ class IncomeCategory:
 
 @dataclass(frozen=True, slots=True)
 class TaxInputs:
-    """Represents categories for tax calculations"""
+    """Input values for tax calculations, aggregated from transaction categories.
+
+    Attributes:
+        all_tax_applied: Freelance income where taxes are already withheld.
+        sales_tax_bundled: Revenue with sales tax included in the price.
+        sales_tax_applied: Revenue where sales tax was collected separately.
+        expenses: Total deductible business expenses (positive value).
+    """
 
     all_tax_applied: float
     sales_tax_bundled: float
@@ -84,6 +93,33 @@ class TaxInputs:
 
 @dataclass(frozen=True, slots=True)
 class TaxResults:
+    """Complete tax calculation results.
+
+    Contains both input values (for display) and all calculated tax amounts.
+
+    Input Fields:
+        all_tax_applied: Freelance income (taxes already withheld).
+        sales_tax_bundled: Revenue with sales tax bundled in price.
+        sales_tax_applied: Revenue with sales tax collected separately.
+        expenses: Business expenses.
+
+    Calculated Fields:
+        sales_taxable: Revenue after extracting bundled sales tax.
+        sales_tax_rate: Applied sales tax rate.
+        sales_tax: Calculated sales tax owed.
+        profit: Total profit (business + freelance).
+        business_profit: Profit from business revenue minus expenses.
+        taxable_income: Income subject to income tax (after SE deduction).
+        sole_proprietor_tax: Self-employment tax (SS + Medicare).
+        federal_income_tax: Federal income tax from brackets.
+        state_income_tax: State income tax from brackets.
+        total_income_tax: Sum of SE + federal + state taxes.
+        total_tax: Total tax including sales tax.
+        take_home: Net income after all income taxes.
+        gross_business_revenue: Total business revenue before taxes.
+        gross_revenue: Total revenue including freelance income.
+    """
+
     all_tax_applied: float
     sales_tax_bundled: float
     sales_tax_applied: float
@@ -108,6 +144,7 @@ class TaxResults:
     gross_revenue: float
 
     def as_dict(self) -> dict[str, float]:
+        """Convert results to a dictionary."""
         return self.__dict__
 
 
