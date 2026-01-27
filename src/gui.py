@@ -46,7 +46,7 @@ def get_version() -> str:
 
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QDragEnterEvent, QDropEvent, QFont
+from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -54,12 +54,15 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QListWidget,
     QListWidgetItem,
     QMessageBox,
     QPushButton,
     QSpinBox,
+    QTableWidget,
+    QTableWidgetItem,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -225,6 +228,31 @@ STYLESHEET: str = f"""
         padding: 8px;
         selection-background-color: {COLORS["primary"]};
         selection-color: white;
+    }}
+
+    QTableWidget {{
+        background-color: {COLORS["surface"]};
+        border: 1px solid {COLORS["border"]};
+        border-radius: 6px;
+        gridline-color: {COLORS["border"]};
+    }}
+
+    QTableWidget::item {{
+        padding: 6px 8px;
+    }}
+
+    QTableWidget::item:selected {{
+        background-color: {COLORS["primary"]};
+        color: white;
+    }}
+
+    QHeaderView::section {{
+        background-color: {COLORS["background"]};
+        color: {COLORS["text"]};
+        font-weight: 600;
+        padding: 8px;
+        border: none;
+        border-bottom: 1px solid {COLORS["border"]};
     }}
 
     QSpinBox {{
@@ -453,14 +481,23 @@ class TaximateGUI(QWidget):
         right_group = QGroupBox("Tax Summary")
         right_layout = QVBoxLayout(right_group)
 
-        self.results_text = QTextEdit()
-        self.results_text.setReadOnly(True)
-        self.results_text.setMinimumWidth(480)
-        # Use monospace font for aligned output
-        font = QFont("Courier New", 10)
-        font.setStyleHint(QFont.StyleHint.Monospace)
-        self.results_text.setFont(font)
-        right_layout.addWidget(self.results_text)
+        self.results_table = QTableWidget()
+        self.results_table.setColumnCount(3)
+        self.results_table.setHorizontalHeaderLabels(["", "Period", "Annual"])
+        self.results_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.results_table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.results_table.setMinimumWidth(480)
+        self.results_table.verticalHeader().setVisible(False)
+        # All columns stretch to fill available space
+        header = self.results_table.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        right_layout.addWidget(self.results_table)
+
+        # Uncategorized items display
+        self.uncategorized_label = QLabel()
+        self.uncategorized_label.setWordWrap(True)
+        self.uncategorized_label.setStyleSheet(f"color: {COLORS['text_muted']}; padding: 8px;")
+        right_layout.addWidget(self.uncategorized_label)
 
         # Months input and calculate button
         calc_layout = QHBoxLayout()
@@ -628,7 +665,7 @@ class TaximateGUI(QWidget):
             self.category_contents.setPlainText("No items assigned")
 
     def _calculate_taxes(self) -> None:
-        """Calculate and display tax summary."""
+        """Calculate and display tax summary in table format."""
         if self.df is None:
             QMessageBox.warning(self, "Warning", "Please load data first")
             return
@@ -639,81 +676,86 @@ class TaximateGUI(QWidget):
         period: TaxResults = summary["period_taxes"]  # type: ignore[assignment]
         annual: TaxResults = summary["annual_taxes"]  # type: ignore[assignment]
 
-        self.results_text.clear()
+        # Update header labels with months
+        self.results_table.setHorizontalHeaderLabels(
+            ["", f"Period ({months} mo)", "Annual (12 mo)"]
+        )
 
-        lines = []
-        # Header with column labels
-        lines.append(f"{'':28} {'PERIOD':>12}  {'ANNUAL':>12}")
-        lines.append(f"{'':28} {'(' + str(months) + ' mo)':>12}  {'(12 mo)':>12}")
-        lines.append("=" * 56 + "\n")
+        # Build rows data: (label, period_value, annual_value, is_section_header, is_highlight)
+        rows: list[tuple[str, float | None, float | None, bool, bool]] = [
+            # Income section
+            ("INCOME", None, None, True, False),
+            ("Freelance (Tax Already Paid)", period.all_tax_applied, annual.all_tax_applied, False, False),
+            ("Revenue (Sales Tax Bundled)", period.sales_tax_bundled, annual.sales_tax_bundled, False, False),
+            ("Revenue (Sales Tax Applied)", period.sales_tax_applied, annual.sales_tax_applied, False, False),
+            ("Business Expenses", -period.expenses, -annual.expenses, False, False),
+            # Profit section
+            ("PROFIT", None, None, True, False),
+            ("Gross Revenue", period.gross_revenue, annual.gross_revenue, False, False),
+            ("Business Profit", period.business_profit, annual.business_profit, False, False),
+            ("Total Profit", period.profit, annual.profit, False, False),
+            ("Sales Taxable Income", period.sales_taxable, annual.sales_taxable, False, False),
+            ("Taxable Income", period.taxable_income, annual.taxable_income, False, False),
+            # Taxes section
+            ("TAXES", None, None, True, False),
+            (f"Sales Tax ({period.sales_tax_rate * 100:.2f}%)", period.sales_tax, annual.sales_tax, False, False),
+            ("Self-Employment Tax", period.sole_proprietor_tax, annual.sole_proprietor_tax, False, False),
+            ("Federal Income Tax", period.federal_income_tax, annual.federal_income_tax, False, False),
+            ("State Income Tax", period.state_income_tax, annual.state_income_tax, False, False),
+            ("Total Income Tax", period.total_income_tax, annual.total_income_tax, False, False),
+            ("Total Tax", period.total_tax, annual.total_tax, False, False),
+            # Summary section
+            ("SUMMARY", None, None, True, False),
+            ("TAKE HOME", period.take_home, annual.take_home, False, True),
+        ]
 
-        # Income section
-        lines.append("--- INCOME ---")
-        lines.append(self._format_row(
-            "Freelance (Tax Already Paid)", period.all_tax_applied, annual.all_tax_applied
-        ))
-        lines.append(self._format_row(
-            "Revenue (Sales Tax Bundled)", period.sales_tax_bundled, annual.sales_tax_bundled
-        ))
-        lines.append(self._format_row(
-            "Revenue (Sales Tax Applied)", period.sales_tax_applied, annual.sales_tax_applied
-        ))
-        lines.append(self._format_row("Business Expenses", -period.expenses, -annual.expenses))
-        lines.append("")
+        self.results_table.setRowCount(len(rows))
 
-        # Business calculations
-        lines.append("--- PROFIT ---")
-        lines.append(self._format_row("Gross Revenue", period.gross_revenue, annual.gross_revenue))
-        lines.append(self._format_row(
-            "Business Profit", period.business_profit, annual.business_profit
-        ))
-        lines.append(self._format_row("Total Profit", period.profit, annual.profit))
-        lines.append(self._format_row(
-            "Sales Taxable Income", period.sales_taxable, annual.sales_taxable
-        ))
-        lines.append(self._format_row("Taxable Income", period.taxable_income, annual.taxable_income))
-        lines.append("")
+        for row_idx, (label, period_val, annual_val, is_header, is_highlight) in enumerate(rows):
+            # Label column
+            label_item = QTableWidgetItem(label)
+            if is_header:
+                label_item.setBackground(self.results_table.palette().alternateBase())
+                font = label_item.font()
+                font.setBold(True)
+                label_item.setFont(font)
+            elif is_highlight:
+                font = label_item.font()
+                font.setBold(True)
+                label_item.setFont(font)
+            self.results_table.setItem(row_idx, 0, label_item)
 
-        # Taxes section
-        lines.append("--- TAXES ---")
-        lines.append(self._format_row(
-            f"Sales Tax ({period.sales_tax_rate * 100:.2f}%)", period.sales_tax, annual.sales_tax
-        ))
-        lines.append(self._format_row(
-            "Self-Employment Tax", period.sole_proprietor_tax, annual.sole_proprietor_tax
-        ))
-        lines.append(self._format_row(
-            "Federal Income Tax", period.federal_income_tax, annual.federal_income_tax
-        ))
-        lines.append(self._format_row(
-            "State Income Tax", period.state_income_tax, annual.state_income_tax
-        ))
-        lines.append(f"{'':28} {'-' * 12}  {'-' * 12}")
-        lines.append(self._format_row(
-            "Total Income Tax", period.total_income_tax, annual.total_income_tax
-        ))
-        lines.append(self._format_row("Total Tax", period.total_tax, annual.total_tax))
-        lines.append("")
+            # Period column
+            if period_val is not None:
+                period_item = QTableWidgetItem(f"${period_val:,.2f}")
+                period_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                if is_highlight:
+                    font = period_item.font()
+                    font.setBold(True)
+                    period_item.setFont(font)
+                self.results_table.setItem(row_idx, 1, period_item)
 
-        # Summary section
-        lines.append("--- SUMMARY ---")
-        lines.append(f"{'':28} {'=' * 12}  {'=' * 12}")
-        lines.append(self._format_row("TAKE HOME", period.take_home, annual.take_home))
+            # Annual column
+            if annual_val is not None:
+                annual_item = QTableWidgetItem(f"${annual_val:,.2f}")
+                annual_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                if is_highlight:
+                    font = annual_item.font()
+                    font.setBold(True)
+                    annual_item.setFont(font)
+                self.results_table.setItem(row_idx, 2, annual_item)
 
         # Show uncategorized items
         uncategorized = self.calculator.get_uncategorized_items(self.df)
         if uncategorized:
-            lines.append(f"\n--- UNCATEGORIZED ({len(uncategorized)}) ---")
-            for item in uncategorized[:6]:
-                lines.append(f"  * {item}")
+            items_text = ", ".join(uncategorized[:6])
             if len(uncategorized) > 6:
-                lines.append(f"  ... +{len(uncategorized) - 6} more")
-
-        self.results_text.setPlainText("\n".join(lines))
-
-    def _format_row(self, label: str, period_val: float, annual_val: float) -> str:
-        """Format a row with label and two value columns."""
-        return f"{label:28} ${period_val:>11,.2f}  ${annual_val:>11,.2f}"
+                items_text += f", +{len(uncategorized) - 6} more"
+            self.uncategorized_label.setText(
+                f"Uncategorized ({len(uncategorized)}): {items_text}"
+            )
+        else:
+            self.uncategorized_label.setText("")
 
 
 def run_app() -> None:
