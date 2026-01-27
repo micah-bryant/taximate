@@ -400,8 +400,6 @@ class TaximateGUI:
         # Get months from spinbox
         try:
             months = int(self.months_var.get())
-            if months < 1 or months > 12:
-                months = 12
         except ValueError:
             months = 12
 
