@@ -33,25 +33,18 @@ from __future__ import annotations
 
 import sys
 from importlib.metadata import PackageNotFoundError, version
+from typing import TYPE_CHECKING, override
 
 import pandas as pd
-
-
-def get_version() -> str:
-    """Get the package version, defaulting to 'dev' if not installed."""
-    try:
-        return version("taximate")
-    except PackageNotFoundError:
-        return "dev"
-
-
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
     QComboBox,
+    QDialog,
+    QDoubleSpinBox,
     QFileDialog,
+    QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -70,6 +63,18 @@ from PySide6.QtWidgets import (
 
 from .data_loader import get_unique_values, load_csvs_from_paths
 from .tax_calculator import TaxCalculator, TaxResults
+
+if TYPE_CHECKING:
+    from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDropEvent, QMouseEvent
+
+
+def get_version() -> str:
+    """Get the package version, defaulting to 'dev' if not installed."""
+    try:
+        return version("taximate")
+    except PackageNotFoundError:
+        return "dev"
+
 
 # Modern color scheme based on Tailwind CSS color palette
 COLORS: dict[str, str] = {
@@ -337,6 +342,7 @@ class DropZone(QLabel):
         self.setStyleSheet(self.DEFAULT_STYLE)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
+    @override
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         """Accept drag events with file URLs."""
         if event.mimeData().hasUrls():
@@ -344,10 +350,13 @@ class DropZone(QLabel):
             self.setStyleSheet(self.HOVER_STYLE)
             self.setText("Release to load files")
 
-    def dragLeaveEvent(self, _event: QDragEnterEvent) -> None:
+    @override
+    def dragLeaveEvent(self, event: QDragLeaveEvent) -> None:
         """Reset appearance when drag leaves."""
+        del event  # unused
         self._reset_style()
 
+    @override
     def dropEvent(self, event: QDropEvent) -> None:
         """Handle dropped files."""
         files = []
@@ -359,9 +368,7 @@ class DropZone(QLabel):
         if files:
             self.parent_gui._load_files(files)
         else:
-            QMessageBox.warning(
-                self, "Warning", "No CSV files found in dropped items"
-            )
+            QMessageBox.warning(self, "Warning", "No CSV files found in dropped items")
 
         self._reset_style()
 
@@ -370,9 +377,125 @@ class DropZone(QLabel):
         self.setText("Drop CSV files here\nor click Browse")
         self.setStyleSheet(self.DEFAULT_STYLE)
 
-    def mousePressEvent(self, _event: QDragEnterEvent) -> None:
+    @override
+    def mousePressEvent(self, event: QMouseEvent) -> None:
         """Handle click to browse files."""
+        del event  # unused
         self.parent_gui._browse_files()
+
+
+class HomeOfficeDeductionDialog(QDialog):
+    """Dialog for calculating home office deduction."""
+
+    def __init__(self, parent: QWidget | None = None, months: int = 12) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Home Office Deduction Calculator")
+        self.setModal(True)
+        self.setMinimumWidth(400)
+        self.months = months
+        self._calculated_deduction: float = 0.0
+
+        self._create_widgets()
+
+    def _create_widgets(self) -> None:
+        """Create dialog widgets."""
+        layout = QVBoxLayout(self)
+
+        # Description
+        desc_label = QLabel(
+            "Calculate your home office deduction based on the percentage of "
+            "your home used for business and your monthly housing expenses."
+        )
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet(f"color: {COLORS['text_muted']}; margin-bottom: 12px;")
+        layout.addWidget(desc_label)
+
+        # Form layout for inputs
+        form_layout = QFormLayout()
+        form_layout.setSpacing(12)
+
+        # Office percentage
+        self.percentage_spinbox = QDoubleSpinBox()
+        self.percentage_spinbox.setRange(0, 100)
+        self.percentage_spinbox.setValue(10)
+        self.percentage_spinbox.setSuffix("%")
+        self.percentage_spinbox.setDecimals(1)
+        self.percentage_spinbox.valueChanged.connect(self._update_calculation)
+        form_layout.addRow("Office Space Percentage:", self.percentage_spinbox)
+
+        # Monthly rent
+        self.rent_spinbox = QDoubleSpinBox()
+        self.rent_spinbox.setRange(0, 99999.99)
+        self.rent_spinbox.setPrefix("$")
+        self.rent_spinbox.setDecimals(2)
+        self.rent_spinbox.valueChanged.connect(self._update_calculation)
+        form_layout.addRow("Monthly Rent:", self.rent_spinbox)
+
+        # Monthly utilities
+        self.utilities_spinbox = QDoubleSpinBox()
+        self.utilities_spinbox.setRange(0, 9999.99)
+        self.utilities_spinbox.setPrefix("$")
+        self.utilities_spinbox.setDecimals(2)
+        self.utilities_spinbox.valueChanged.connect(self._update_calculation)
+        form_layout.addRow("Monthly Utilities:", self.utilities_spinbox)
+
+        # Monthly insurance
+        self.insurance_spinbox = QDoubleSpinBox()
+        self.insurance_spinbox.setRange(0, 9999.99)
+        self.insurance_spinbox.setPrefix("$")
+        self.insurance_spinbox.setDecimals(2)
+        self.insurance_spinbox.valueChanged.connect(self._update_calculation)
+        form_layout.addRow("Monthly Insurance:", self.insurance_spinbox)
+
+        layout.addLayout(form_layout)
+
+        # Calculation result display
+        self.result_label = QLabel()
+        self.result_label.setStyleSheet(
+            f"font-size: 14px; font-weight: 600; color: {COLORS['primary']}; "
+            "margin-top: 16px; padding: 12px; background-color: #eff6ff; "
+            "border-radius: 6px;"
+        )
+        self.result_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(self.result_label)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+        button_layout.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setObjectName("secondaryButton")
+        cancel_btn.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_btn)
+
+        apply_btn = QPushButton("Apply Deduction")
+        apply_btn.setObjectName("successButton")
+        apply_btn.clicked.connect(self.accept)
+        button_layout.addWidget(apply_btn)
+
+        layout.addLayout(button_layout)
+
+        self._update_calculation()
+
+    def _update_calculation(self) -> None:
+        """Update the calculated deduction based on current inputs."""
+        percentage = self.percentage_spinbox.value() / 100
+        monthly_total = (
+            self.rent_spinbox.value()
+            + self.utilities_spinbox.value()
+            + self.insurance_spinbox.value()
+        )
+        monthly_deduction = monthly_total * percentage
+        self._calculated_deduction = monthly_deduction * self.months
+
+        self.result_label.setText(
+            f"Monthly Deduction: ${monthly_deduction:,.2f}\n"
+            f"Period Deduction ({self.months} mo): ${self._calculated_deduction:,.2f}"
+        )
+
+    def get_deduction(self) -> float:
+        """Return the calculated deduction amount."""
+        return self._calculated_deduction
 
 
 class TaximateGUI(QWidget):
@@ -498,6 +621,17 @@ class TaximateGUI(QWidget):
         self.uncategorized_label.setWordWrap(True)
         self.uncategorized_label.setStyleSheet(f"color: {COLORS['text_muted']}; padding: 8px;")
         right_layout.addWidget(self.uncategorized_label)
+
+        # Deductions button
+        self.deductions_btn = QPushButton("Home Office Deduction...")
+        self.deductions_btn.setObjectName("secondaryButton")
+        self.deductions_btn.clicked.connect(self._show_home_office_dialog)
+        right_layout.addWidget(self.deductions_btn)
+
+        # Deduction display label
+        self.deduction_label = QLabel("No deductions applied")
+        self.deduction_label.setStyleSheet(f"color: {COLORS['text_muted']}; padding: 4px;")
+        right_layout.addWidget(self.deduction_label)
 
         # Months input and calculate button
         calc_layout = QHBoxLayout()
@@ -664,6 +798,25 @@ class TaximateGUI(QWidget):
         else:
             self.category_contents.setPlainText("No items assigned")
 
+    def _show_home_office_dialog(self) -> None:
+        """Show the home office deduction calculator dialog."""
+        months = self.months_spinbox.value()
+        dialog = HomeOfficeDeductionDialog(self, months)
+
+        if dialog.exec():
+            deduction = dialog.get_deduction()
+            self.calculator.manual_deductions = deduction
+            if deduction > 0:
+                self.deduction_label.setText(
+                    f"Home Office Deduction: ${deduction:,.2f} ({months} mo)"
+                )
+                self.deduction_label.setStyleSheet(
+                    f"color: {COLORS['success']}; font-weight: 500; padding: 4px;"
+                )
+            else:
+                self.deduction_label.setText("No deductions applied")
+                self.deduction_label.setStyleSheet(f"color: {COLORS['text_muted']}; padding: 4px;")
+
     def _calculate_taxes(self) -> None:
         """Calculate and display tax summary in table format."""
         if self.df is None:
@@ -673,8 +826,8 @@ class TaximateGUI(QWidget):
         months = self.months_spinbox.value()
 
         summary = self.calculator.generate_summary(self.df, months)
-        period: TaxResults = summary["period_taxes"]  # type: ignore[assignment]
-        annual: TaxResults = summary["annual_taxes"]  # type: ignore[assignment]
+        period: TaxResults = summary["period_taxes"]
+        annual: TaxResults = summary["annual_taxes"]
 
         # Update header labels with months
         self.results_table.setHorizontalHeaderLabels(
@@ -685,10 +838,29 @@ class TaximateGUI(QWidget):
         rows: list[tuple[str, float | None, float | None, bool, bool]] = [
             # Income section
             ("INCOME", None, None, True, False),
-            ("Freelance (Tax Already Paid)", period.all_tax_applied, annual.all_tax_applied, False, False),
-            ("Revenue (Sales Tax Bundled)", period.sales_tax_bundled, annual.sales_tax_bundled, False, False),
-            ("Revenue (Sales Tax Applied)", period.sales_tax_applied, annual.sales_tax_applied, False, False),
+            (
+                "Freelance (Tax Already Paid)",
+                period.all_tax_applied,
+                annual.all_tax_applied,
+                False,
+                False,
+            ),
+            (
+                "Revenue (Sales Tax Bundled)",
+                period.sales_tax_bundled,
+                annual.sales_tax_bundled,
+                False,
+                False,
+            ),
+            (
+                "Revenue (Sales Tax Applied)",
+                period.sales_tax_applied,
+                annual.sales_tax_applied,
+                False,
+                False,
+            ),
             ("Business Expenses", -period.expenses, -annual.expenses, False, False),
+            ("Deductions", -period.deductions, -annual.deductions, False, False),
             # Profit section
             ("PROFIT", None, None, True, False),
             ("Gross Revenue", period.gross_revenue, annual.gross_revenue, False, False),
@@ -698,9 +870,27 @@ class TaximateGUI(QWidget):
             ("Taxable Income", period.taxable_income, annual.taxable_income, False, False),
             # Taxes section
             ("TAXES", None, None, True, False),
-            (f"Sales Tax ({period.sales_tax_rate * 100:.2f}%)", period.sales_tax, annual.sales_tax, False, False),
-            ("Self-Employment Tax", period.sole_proprietor_tax, annual.sole_proprietor_tax, False, False),
-            ("Federal Income Tax", period.federal_income_tax, annual.federal_income_tax, False, False),
+            (
+                f"Sales Tax ({period.sales_tax_rate * 100:.2f}%)",
+                period.sales_tax,
+                annual.sales_tax,
+                False,
+                False,
+            ),
+            (
+                "Self-Employment Tax",
+                period.sole_proprietor_tax,
+                annual.sole_proprietor_tax,
+                False,
+                False,
+            ),
+            (
+                "Federal Income Tax",
+                period.federal_income_tax,
+                annual.federal_income_tax,
+                False,
+                False,
+            ),
             ("State Income Tax", period.state_income_tax, annual.state_income_tax, False, False),
             ("Total Income Tax", period.total_income_tax, annual.total_income_tax, False, False),
             ("Total Tax", period.total_tax, annual.total_tax, False, False),
@@ -728,7 +918,9 @@ class TaximateGUI(QWidget):
             # Period column
             if period_val is not None:
                 period_item = QTableWidgetItem(f"${period_val:,.2f}")
-                period_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                period_item.setTextAlignment(
+                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                )
                 if is_highlight:
                     font = period_item.font()
                     font.setBold(True)
@@ -738,7 +930,9 @@ class TaximateGUI(QWidget):
             # Annual column
             if annual_val is not None:
                 annual_item = QTableWidgetItem(f"${annual_val:,.2f}")
-                annual_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                annual_item.setTextAlignment(
+                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                )
                 if is_highlight:
                     font = annual_item.font()
                     font.setBold(True)
@@ -751,9 +945,7 @@ class TaximateGUI(QWidget):
             items_text = ", ".join(uncategorized[:6])
             if len(uncategorized) > 6:
                 items_text += f", +{len(uncategorized) - 6} more"
-            self.uncategorized_label.setText(
-                f"Uncategorized ({len(uncategorized)}): {items_text}"
-            )
+            self.uncategorized_label.setText(f"Uncategorized ({len(uncategorized)}): {items_text}")
         else:
             self.uncategorized_label.setText("")
 
