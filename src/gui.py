@@ -5,13 +5,14 @@ This module provides the main graphical user interface for Taximate, featuring:
 - Drag-and-drop CSV file loading
 - Multi-file selection via file browser dialog
 - Transaction item categorization with visual feedback
+- Deduction calculators for home office and car expenses
 - Real-time tax calculation with side-by-side period/annual comparison
 - Version display from package metadata
 
 The GUI uses a three-panel layout:
 - Left: Transaction items list with category indicators
 - Center: Category assignment controls and category contents
-- Right: Tax calculation summary with period and annualized columns
+- Right: Tax calculation summary with deduction buttons and period/annualized columns
 
 Styling:
     The interface uses a modern color scheme with:
@@ -20,12 +21,18 @@ Styling:
     - Success (green): Positive actions (assign, calculate)
     - Danger (red): Destructive actions (clear data)
 
+Disclaimer:
+    This application is for informational purposes only and does not constitute
+    financial, tax, or legal advice. Consult a qualified tax professional.
+
 Functions:
     get_version: Get package version from metadata.
     run_app: Create and launch the application.
 
 Classes:
     DropZone: Drag-and-drop area for CSV files.
+    HomeOfficeDeductionDialog: Calculator for home office deduction.
+    CarDeductionDialog: Calculator for car/vehicle deduction.
     TaximateGUI: Main application window.
 """
 
@@ -33,25 +40,19 @@ from __future__ import annotations
 
 import sys
 from importlib.metadata import PackageNotFoundError, version
+from typing import TYPE_CHECKING, override
 
 import pandas as pd
-
-
-def get_version() -> str:
-    """Get the package version, defaulting to 'dev' if not installed."""
-    try:
-        return version("taximate")
-    except PackageNotFoundError:
-        return "dev"
-
-
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QButtonGroup,
     QComboBox,
+    QDialog,
+    QDoubleSpinBox,
     QFileDialog,
+    QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -60,6 +61,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QRadioButton,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -70,6 +72,18 @@ from PySide6.QtWidgets import (
 
 from .data_loader import get_unique_values, load_csvs_from_paths
 from .tax_calculator import TaxCalculator, TaxResults
+
+if TYPE_CHECKING:
+    from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDropEvent, QMouseEvent
+
+
+def get_version() -> str:
+    """Get the package version, defaulting to 'dev' if not installed."""
+    try:
+        return version("taximate")
+    except PackageNotFoundError:
+        return "dev"
+
 
 # Modern color scheme based on Tailwind CSS color palette
 COLORS: dict[str, str] = {
@@ -337,6 +351,7 @@ class DropZone(QLabel):
         self.setStyleSheet(self.DEFAULT_STYLE)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
+    @override
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         """Accept drag events with file URLs."""
         if event.mimeData().hasUrls():
@@ -344,10 +359,13 @@ class DropZone(QLabel):
             self.setStyleSheet(self.HOVER_STYLE)
             self.setText("Release to load files")
 
-    def dragLeaveEvent(self, _event: QDragEnterEvent) -> None:
+    @override
+    def dragLeaveEvent(self, event: QDragLeaveEvent) -> None:
         """Reset appearance when drag leaves."""
+        del event  # unused
         self._reset_style()
 
+    @override
     def dropEvent(self, event: QDropEvent) -> None:
         """Handle dropped files."""
         files = []
@@ -359,9 +377,7 @@ class DropZone(QLabel):
         if files:
             self.parent_gui._load_files(files)
         else:
-            QMessageBox.warning(
-                self, "Warning", "No CSV files found in dropped items"
-            )
+            QMessageBox.warning(self, "Warning", "No CSV files found in dropped items")
 
         self._reset_style()
 
@@ -370,9 +386,312 @@ class DropZone(QLabel):
         self.setText("Drop CSV files here\nor click Browse")
         self.setStyleSheet(self.DEFAULT_STYLE)
 
-    def mousePressEvent(self, _event: QDragEnterEvent) -> None:
+    @override
+    def mousePressEvent(self, event: QMouseEvent) -> None:
         """Handle click to browse files."""
+        del event  # unused
         self.parent_gui._browse_files()
+
+
+class HomeOfficeDeductionDialog(QDialog):
+    """Dialog for calculating home office deduction."""
+
+    def __init__(self, parent: QWidget | None = None, months: int = 12) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Home Office Deduction Calculator")
+        self.setModal(True)
+        self.setMinimumWidth(400)
+        self.months = months
+        self._calculated_deduction: float = 0.0
+
+        self._create_widgets()
+
+    def _create_widgets(self) -> None:
+        """Create dialog widgets."""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(16)
+
+        # Description
+        desc_label = QLabel(
+            "Calculate your home office deduction based on the percentage of "
+            "your home used for business and your monthly housing expenses."
+        )
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet(f"color: {COLORS['text_muted']};")
+        layout.addWidget(desc_label)
+
+        # Form layout for inputs
+        form_group = QGroupBox("Monthly Expenses")
+        form_layout = QFormLayout(form_group)
+        form_layout.setSpacing(16)
+        form_layout.setContentsMargins(16, 20, 16, 16)
+
+        # Office percentage
+        self.percentage_spinbox = QDoubleSpinBox()
+        self.percentage_spinbox.setRange(0, 100)
+        self.percentage_spinbox.setValue(10)
+        self.percentage_spinbox.setSuffix("%")
+        self.percentage_spinbox.setDecimals(1)
+        self.percentage_spinbox.setMinimumHeight(32)
+        self.percentage_spinbox.valueChanged.connect(self._update_calculation)
+        form_layout.addRow("Office Space Percentage:", self.percentage_spinbox)
+
+        # Monthly rent
+        self.rent_spinbox = QDoubleSpinBox()
+        self.rent_spinbox.setRange(0, 99999.99)
+        self.rent_spinbox.setPrefix("$")
+        self.rent_spinbox.setDecimals(2)
+        self.rent_spinbox.setMinimumHeight(32)
+        self.rent_spinbox.valueChanged.connect(self._update_calculation)
+        form_layout.addRow("Monthly Rent:", self.rent_spinbox)
+
+        # Monthly utilities
+        self.utilities_spinbox = QDoubleSpinBox()
+        self.utilities_spinbox.setRange(0, 9999.99)
+        self.utilities_spinbox.setPrefix("$")
+        self.utilities_spinbox.setDecimals(2)
+        self.utilities_spinbox.setMinimumHeight(32)
+        self.utilities_spinbox.valueChanged.connect(self._update_calculation)
+        form_layout.addRow("Monthly Utilities:", self.utilities_spinbox)
+
+        # Monthly insurance
+        self.insurance_spinbox = QDoubleSpinBox()
+        self.insurance_spinbox.setRange(0, 9999.99)
+        self.insurance_spinbox.setPrefix("$")
+        self.insurance_spinbox.setDecimals(2)
+        self.insurance_spinbox.setMinimumHeight(32)
+        self.insurance_spinbox.valueChanged.connect(self._update_calculation)
+        form_layout.addRow("Monthly Insurance:", self.insurance_spinbox)
+
+        layout.addWidget(form_group)
+
+        # Calculation result display
+        self.result_label = QLabel()
+        self.result_label.setStyleSheet(
+            f"font-size: 14px; font-weight: 600; color: {COLORS['primary']}; "
+            "padding: 16px; background-color: #eff6ff; border-radius: 6px;"
+        )
+        self.result_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.result_label.setMinimumHeight(60)
+        layout.addWidget(self.result_label)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(12)
+        button_layout.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setObjectName("secondaryButton")
+        cancel_btn.setMinimumWidth(100)
+        cancel_btn.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_btn)
+
+        apply_btn = QPushButton("Apply Deduction")
+        apply_btn.setObjectName("successButton")
+        apply_btn.setMinimumWidth(120)
+        apply_btn.clicked.connect(self.accept)
+        button_layout.addWidget(apply_btn)
+
+        layout.addLayout(button_layout)
+
+        self._update_calculation()
+
+    def _update_calculation(self) -> None:
+        """Update the calculated deduction based on current inputs."""
+        percentage = self.percentage_spinbox.value() / 100
+        monthly_total = (
+            self.rent_spinbox.value()
+            + self.utilities_spinbox.value()
+            + self.insurance_spinbox.value()
+        )
+        monthly_deduction = monthly_total * percentage
+        self._calculated_deduction = monthly_deduction * self.months
+
+        self.result_label.setText(
+            f"Monthly Deduction: ${monthly_deduction:,.2f}\n"
+            f"Period Deduction ({self.months} mo): ${self._calculated_deduction:,.2f}"
+        )
+
+    def get_deduction(self) -> float:
+        """Return the calculated deduction amount."""
+        return self._calculated_deduction
+
+
+class CarDeductionDialog(QDialog):
+    """Dialog for calculating car/vehicle deduction."""
+
+    STANDARD_MILEAGE_RATE = 0.70  # 70 cents per mile for 2024
+
+    def __init__(self, parent: QWidget | None = None, months: int = 12) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Car Deduction Calculator")
+        self.setModal(True)
+        self.setMinimumWidth(450)
+        self.months = months
+        self._calculated_deduction: float = 0.0
+
+        self._create_widgets()
+
+    def _create_widgets(self) -> None:
+        """Create dialog widgets."""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(16)
+
+        # Description
+        desc_label = QLabel(
+            "Choose a deduction method: Standard Mileage Rate "
+            f"(${self.STANDARD_MILEAGE_RATE:.2f}/mile) or Actual Expenses "
+            "(business use percentage of car cost)."
+        )
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet(f"color: {COLORS['text_muted']};")
+        layout.addWidget(desc_label)
+
+        # Method selection with radio buttons
+        self.method_group = QButtonGroup(self)
+
+        # Standard mileage option
+        self.standard_group = QGroupBox()
+        standard_header = QVBoxLayout(self.standard_group)
+        standard_header.setContentsMargins(16, 16, 16, 16)
+        standard_header.setSpacing(16)
+
+        self.standard_radio = QRadioButton("Standard Mileage Rate")
+        self.standard_radio.setChecked(True)
+        self.standard_radio.setStyleSheet("font-weight: 600;")
+        self.method_group.addButton(self.standard_radio, 0)
+        standard_header.addWidget(self.standard_radio)
+
+        standard_form = QFormLayout()
+        standard_form.setSpacing(12)
+        self.business_miles_spinbox = QDoubleSpinBox()
+        self.business_miles_spinbox.setRange(0, 999999)
+        self.business_miles_spinbox.setSuffix(" miles")
+        self.business_miles_spinbox.setDecimals(0)
+        self.business_miles_spinbox.setMinimumHeight(32)
+        self.business_miles_spinbox.valueChanged.connect(self._update_calculation)
+        standard_form.addRow("Business Miles Driven:", self.business_miles_spinbox)
+        standard_header.addLayout(standard_form)
+
+        layout.addWidget(self.standard_group)
+
+        # Actual expense option
+        self.actual_group = QGroupBox()
+        actual_header = QVBoxLayout(self.actual_group)
+        actual_header.setContentsMargins(16, 16, 16, 16)
+        actual_header.setSpacing(16)
+
+        self.actual_radio = QRadioButton("Actual Expenses")
+        self.actual_radio.setStyleSheet("font-weight: 600;")
+        self.method_group.addButton(self.actual_radio, 1)
+        actual_header.addWidget(self.actual_radio)
+
+        actual_form = QFormLayout()
+        actual_form.setSpacing(12)
+
+        self.total_miles_spinbox = QDoubleSpinBox()
+        self.total_miles_spinbox.setRange(0, 999999)
+        self.total_miles_spinbox.setSuffix(" miles")
+        self.total_miles_spinbox.setDecimals(0)
+        self.total_miles_spinbox.setMinimumHeight(32)
+        self.total_miles_spinbox.valueChanged.connect(self._update_calculation)
+        actual_form.addRow("Total Miles Driven:", self.total_miles_spinbox)
+
+        self.actual_business_miles_spinbox = QDoubleSpinBox()
+        self.actual_business_miles_spinbox.setRange(0, 999999)
+        self.actual_business_miles_spinbox.setSuffix(" miles")
+        self.actual_business_miles_spinbox.setDecimals(0)
+        self.actual_business_miles_spinbox.setMinimumHeight(32)
+        self.actual_business_miles_spinbox.valueChanged.connect(self._update_calculation)
+        actual_form.addRow("Business Miles Driven:", self.actual_business_miles_spinbox)
+
+        self.car_cost_spinbox = QDoubleSpinBox()
+        self.car_cost_spinbox.setRange(0, 999999.99)
+        self.car_cost_spinbox.setPrefix("$")
+        self.car_cost_spinbox.setDecimals(2)
+        self.car_cost_spinbox.setMinimumHeight(32)
+        self.car_cost_spinbox.valueChanged.connect(self._update_calculation)
+        actual_form.addRow("Cost of Car:", self.car_cost_spinbox)
+
+        actual_header.addLayout(actual_form)
+        layout.addWidget(self.actual_group)
+
+        # Connect radio buttons
+        self.standard_radio.toggled.connect(self._on_method_changed)
+        self.actual_radio.toggled.connect(self._on_method_changed)
+
+        # Calculation result display
+        self.result_label = QLabel()
+        self.result_label.setStyleSheet(
+            f"font-size: 14px; font-weight: 600; color: {COLORS['primary']}; "
+            "padding: 16px; background-color: #eff6ff; border-radius: 6px;"
+        )
+        self.result_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.result_label.setMinimumHeight(60)
+        layout.addWidget(self.result_label)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(12)
+        button_layout.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setObjectName("secondaryButton")
+        cancel_btn.setMinimumWidth(100)
+        cancel_btn.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_btn)
+
+        apply_btn = QPushButton("Apply Deduction")
+        apply_btn.setObjectName("successButton")
+        apply_btn.setMinimumWidth(120)
+        apply_btn.clicked.connect(self.accept)
+        button_layout.addWidget(apply_btn)
+
+        layout.addLayout(button_layout)
+
+        self._on_method_changed()
+        self._update_calculation()
+
+    def _on_method_changed(self) -> None:
+        """Handle method selection change - enable/disable input groups."""
+        is_standard = self.standard_radio.isChecked()
+        self.business_miles_spinbox.setEnabled(is_standard)
+        self.total_miles_spinbox.setEnabled(not is_standard)
+        self.actual_business_miles_spinbox.setEnabled(not is_standard)
+        self.car_cost_spinbox.setEnabled(not is_standard)
+        self._update_calculation()
+
+    def _update_calculation(self) -> None:
+        """Update the calculated deduction based on current inputs."""
+        if self.standard_radio.isChecked():
+            business_miles = self.business_miles_spinbox.value()
+            self._calculated_deduction = business_miles * self.STANDARD_MILEAGE_RATE
+            self.result_label.setText(
+                f"{business_miles:,.0f} miles * ${self.STANDARD_MILEAGE_RATE:.2f}/mile\n"
+                f"Deduction: ${self._calculated_deduction:,.2f}"
+            )
+        else:
+            total_miles = self.total_miles_spinbox.value()
+            business_miles = self.actual_business_miles_spinbox.value()
+            car_cost = self.car_cost_spinbox.value()
+
+            if total_miles > 0:
+                business_percentage = business_miles / total_miles
+                self._calculated_deduction = business_percentage * car_cost
+                self.result_label.setText(
+                    f"Business Use: {business_percentage * 100:.1f}% "
+                    f"({business_miles:,.0f} / {total_miles:,.0f} miles)\n"
+                    f"Deduction: ${self._calculated_deduction:,.2f}"
+                )
+            else:
+                self._calculated_deduction = 0.0
+                self.result_label.setText("Enter total miles to calculate")
+
+    def get_deduction(self) -> float:
+        """Return the calculated deduction amount."""
+        return self._calculated_deduction
 
 
 class TaximateGUI(QWidget):
@@ -498,6 +817,27 @@ class TaximateGUI(QWidget):
         self.uncategorized_label.setWordWrap(True)
         self.uncategorized_label.setStyleSheet(f"color: {COLORS['text_muted']}; padding: 8px;")
         right_layout.addWidget(self.uncategorized_label)
+
+        # Deductions buttons
+        deductions_layout = QHBoxLayout()
+
+        self.home_office_btn = QPushButton("Home Office...")
+        self.home_office_btn.setObjectName("secondaryButton")
+        self.home_office_btn.clicked.connect(self._show_home_office_dialog)
+        deductions_layout.addWidget(self.home_office_btn)
+
+        self.car_deduction_btn = QPushButton("Car Deduction...")
+        self.car_deduction_btn.setObjectName("secondaryButton")
+        self.car_deduction_btn.clicked.connect(self._show_car_deduction_dialog)
+        deductions_layout.addWidget(self.car_deduction_btn)
+
+        deductions_layout.addStretch()
+        right_layout.addLayout(deductions_layout)
+
+        # Deduction display label
+        self.deduction_label = QLabel("No deductions applied")
+        self.deduction_label.setStyleSheet(f"color: {COLORS['text_muted']}; padding: 4px;")
+        right_layout.addWidget(self.deduction_label)
 
         # Months input and calculate button
         calc_layout = QHBoxLayout()
@@ -664,6 +1004,45 @@ class TaximateGUI(QWidget):
         else:
             self.category_contents.setPlainText("No items assigned")
 
+    def _show_home_office_dialog(self) -> None:
+        """Show the home office deduction calculator dialog."""
+        months = self.months_spinbox.value()
+        dialog = HomeOfficeDeductionDialog(self, months)
+
+        if dialog.exec():
+            self.calculator.home_office_deduction = dialog.get_deduction()
+            self._update_deduction_label()
+
+    def _show_car_deduction_dialog(self) -> None:
+        """Show the car deduction calculator dialog."""
+        months = self.months_spinbox.value()
+        dialog = CarDeductionDialog(self, months)
+
+        if dialog.exec():
+            self.calculator.car_deduction = dialog.get_deduction()
+            self._update_deduction_label()
+
+    def _update_deduction_label(self) -> None:
+        """Update the deduction label with current deductions."""
+        deductions = []
+        if self.calculator.home_office_deduction > 0:
+            deductions.append(f"Home Office: ${self.calculator.home_office_deduction:,.2f}")
+        if self.calculator.car_deduction > 0:
+            deductions.append(f"Car: ${self.calculator.car_deduction:,.2f}")
+
+        if deductions:
+            total = self.calculator.manual_deductions
+            text = " | ".join(deductions)
+            if len(deductions) > 1:
+                text += f" | Total: ${total:,.2f}"
+            self.deduction_label.setText(text)
+            self.deduction_label.setStyleSheet(
+                f"color: {COLORS['success']}; font-weight: 500; padding: 4px;"
+            )
+        else:
+            self.deduction_label.setText("No deductions applied")
+            self.deduction_label.setStyleSheet(f"color: {COLORS['text_muted']}; padding: 4px;")
+
     def _calculate_taxes(self) -> None:
         """Calculate and display tax summary in table format."""
         if self.df is None:
@@ -673,8 +1052,8 @@ class TaximateGUI(QWidget):
         months = self.months_spinbox.value()
 
         summary = self.calculator.generate_summary(self.df, months)
-        period: TaxResults = summary["period_taxes"]  # type: ignore[assignment]
-        annual: TaxResults = summary["annual_taxes"]  # type: ignore[assignment]
+        period: TaxResults = summary["period_taxes"]
+        annual: TaxResults = summary["annual_taxes"]
 
         # Update header labels with months
         self.results_table.setHorizontalHeaderLabels(
@@ -685,10 +1064,29 @@ class TaximateGUI(QWidget):
         rows: list[tuple[str, float | None, float | None, bool, bool]] = [
             # Income section
             ("INCOME", None, None, True, False),
-            ("Freelance (Tax Already Paid)", period.all_tax_applied, annual.all_tax_applied, False, False),
-            ("Revenue (Sales Tax Bundled)", period.sales_tax_bundled, annual.sales_tax_bundled, False, False),
-            ("Revenue (Sales Tax Applied)", period.sales_tax_applied, annual.sales_tax_applied, False, False),
+            (
+                "Freelance (Tax Already Paid)",
+                period.all_tax_applied,
+                annual.all_tax_applied,
+                False,
+                False,
+            ),
+            (
+                "Revenue (Sales Tax Bundled)",
+                period.sales_tax_bundled,
+                annual.sales_tax_bundled,
+                False,
+                False,
+            ),
+            (
+                "Revenue (Sales Tax Applied)",
+                period.sales_tax_applied,
+                annual.sales_tax_applied,
+                False,
+                False,
+            ),
             ("Business Expenses", -period.expenses, -annual.expenses, False, False),
+            ("Deductions", -period.deductions, -annual.deductions, False, False),
             # Profit section
             ("PROFIT", None, None, True, False),
             ("Gross Revenue", period.gross_revenue, annual.gross_revenue, False, False),
@@ -698,9 +1096,27 @@ class TaximateGUI(QWidget):
             ("Taxable Income", period.taxable_income, annual.taxable_income, False, False),
             # Taxes section
             ("TAXES", None, None, True, False),
-            (f"Sales Tax ({period.sales_tax_rate * 100:.2f}%)", period.sales_tax, annual.sales_tax, False, False),
-            ("Self-Employment Tax", period.sole_proprietor_tax, annual.sole_proprietor_tax, False, False),
-            ("Federal Income Tax", period.federal_income_tax, annual.federal_income_tax, False, False),
+            (
+                f"Sales Tax ({period.sales_tax_rate * 100:.2f}%)",
+                period.sales_tax,
+                annual.sales_tax,
+                False,
+                False,
+            ),
+            (
+                "Self-Employment Tax",
+                period.sole_proprietor_tax,
+                annual.sole_proprietor_tax,
+                False,
+                False,
+            ),
+            (
+                "Federal Income Tax",
+                period.federal_income_tax,
+                annual.federal_income_tax,
+                False,
+                False,
+            ),
             ("State Income Tax", period.state_income_tax, annual.state_income_tax, False, False),
             ("Total Income Tax", period.total_income_tax, annual.total_income_tax, False, False),
             ("Total Tax", period.total_tax, annual.total_tax, False, False),
@@ -728,7 +1144,9 @@ class TaximateGUI(QWidget):
             # Period column
             if period_val is not None:
                 period_item = QTableWidgetItem(f"${period_val:,.2f}")
-                period_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                period_item.setTextAlignment(
+                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                )
                 if is_highlight:
                     font = period_item.font()
                     font.setBold(True)
@@ -738,7 +1156,9 @@ class TaximateGUI(QWidget):
             # Annual column
             if annual_val is not None:
                 annual_item = QTableWidgetItem(f"${annual_val:,.2f}")
-                annual_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                annual_item.setTextAlignment(
+                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                )
                 if is_highlight:
                     font = annual_item.font()
                     font.setBold(True)
@@ -751,9 +1171,7 @@ class TaximateGUI(QWidget):
             items_text = ", ".join(uncategorized[:6])
             if len(uncategorized) > 6:
                 items_text += f", +{len(uncategorized) - 6} more"
-            self.uncategorized_label.setText(
-                f"Uncategorized ({len(uncategorized)}): {items_text}"
-            )
+            self.uncategorized_label.setText(f"Uncategorized ({len(uncategorized)}): {items_text}")
         else:
             self.uncategorized_label.setText("")
 

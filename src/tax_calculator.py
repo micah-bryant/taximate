@@ -6,9 +6,16 @@ income including:
 - California state income tax (progressive brackets)
 - Self-employment tax (Social Security + Medicare)
 - Sales tax
+- Manual deductions (home office, car expenses)
 
 Tax rates are loaded from CSV files in the tax_rates/ directory, making them
 easy to update for new tax years or different jurisdictions.
+
+Disclaimer:
+    This module is for informational and educational purposes only. It does not
+    constitute financial, tax, or legal advice. Tax laws are complex and vary by
+    jurisdiction. Always consult a qualified tax professional for advice specific
+    to your situation.
 
 Classes:
     TaxBracket: Represents a single progressive tax bracket.
@@ -74,12 +81,14 @@ class TaxInputs:
         sales_tax_bundled: Revenue with sales tax included in the price.
         sales_tax_applied: Revenue where sales tax was collected separately.
         expenses: Total deductible business expenses (positive value).
+        deductions: Manual deductions (e.g., home office deduction).
     """
 
     all_tax_applied: float
     sales_tax_bundled: float
     sales_tax_applied: float
     expenses: float
+    deductions: float = 0.0
 
     def annualized(self, months: int) -> TaxInputs:
         factor = 12 / months
@@ -88,6 +97,7 @@ class TaxInputs:
             sales_tax_bundled=self.sales_tax_bundled * factor,
             sales_tax_applied=self.sales_tax_applied * factor,
             expenses=self.expenses * factor,
+            deductions=self.deductions * factor,
         )
 
 
@@ -102,6 +112,7 @@ class TaxResults:
         sales_tax_bundled: Revenue with sales tax bundled in price.
         sales_tax_applied: Revenue with sales tax collected separately.
         expenses: Business expenses.
+        deductions: Manual deductions (e.g., home office).
 
     Calculated Fields:
         sales_taxable: Revenue after extracting bundled sales tax.
@@ -124,6 +135,7 @@ class TaxResults:
     sales_tax_bundled: float
     sales_tax_applied: float
     expenses: float
+    deductions: float
 
     sales_taxable: float
     sales_tax_rate: float
@@ -307,7 +319,14 @@ class TaxCalculator:
         self.categories: dict[str, IncomeCategory] = {}
         self.item_to_category: dict[str, str] = {}
         self.tax_rates = TaxRates(tax_rates_dir)
+        self.home_office_deduction: float = 0.0
+        self.car_deduction: float = 0.0
         self._setup_default_categories()
+
+    @property
+    def manual_deductions(self) -> float:
+        """Total of all manual deductions."""
+        return self.home_office_deduction + self.car_deduction
 
     def _setup_default_categories(self) -> None:
         """Set up the four main income/expense categories."""
@@ -383,7 +402,9 @@ class TaxCalculator:
         sales_tax = inputs.sales_tax_bundled - sales_taxable
 
         # Calculate how much profit from hustles and main business
-        business_profit = sales_taxable + inputs.sales_tax_applied - inputs.expenses
+        # Deductions reduce profit similar to expenses
+        total_deductible = inputs.expenses + inputs.deductions
+        business_profit = sales_taxable + inputs.sales_tax_applied - total_deductible
         profit = business_profit + inputs.all_tax_applied
 
         sole_proprietor_tax = self.tax_rates.calculate_self_employment_tax(business_profit)
@@ -409,6 +430,7 @@ class TaxCalculator:
             sales_tax_bundled=inputs.sales_tax_bundled,
             sales_tax_applied=inputs.sales_tax_applied,
             expenses=inputs.expenses,
+            deductions=inputs.deductions,
             sales_taxable=sales_taxable,
             sales_tax_rate=self.tax_rates.sales_tax_rate,
             sales_tax=sales_tax,
@@ -431,6 +453,7 @@ class TaxCalculator:
             sales_tax_bundled=self._get_category_total(df, CATEGORY_REVENUE_SALES_TAX_BUNDLED),
             sales_tax_applied=self._get_category_total(df, CATEGORY_REVENUE_SALES_TAX_APPLIED),
             expenses=abs(self._get_category_total(df, CATEGORY_EXPENSES)),
+            deductions=self.manual_deductions,
         )
 
     def generate_summary(

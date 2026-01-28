@@ -2,13 +2,15 @@
 
 A Python GUI application that imports transaction data from EveryDollar CSV exports and calculates self-employment taxes including sales tax, sole proprietor tax, federal and state income taxes.
 
+> **⚠️ Disclaimer:** This application is for informational and educational purposes only. It is **not** financial, tax, or legal advice. Tax laws are complex and vary by jurisdiction. Always consult a qualified tax professional or accountant for advice specific to your situation. The developers are not responsible for any errors in calculations or any decisions made based on the output of this application.
+
 ## Features
 
-- **Modern PySide6 GUI** - Clean, modern interface with color-coded buttons and styled widgets
 - **Drag-and-drop file loading** - Drop multiple CSV files directly onto the app
 - **Multi-file support** - Load and combine multiple CSV transaction files at once
 - **File browser** - Select CSV files from anywhere on your system
 - **Transaction categorization** - Assign transactions to income/expense categories
+- **Deduction calculators** - Built-in calculators for home office and car deductions
 - **Side-by-side comparison** - View current period and annualized tax calculations together
 - **Progressive tax brackets** - Federal and California state income tax calculations
 - **Self-employment tax** - Social Security and Medicare with wage base cap
@@ -58,6 +60,31 @@ uv run python main.py
 | **Revenue (Sales Tax Applied)** | Business revenue where sales tax was collected separately |
 | **Business Expenses** | Deductible business expenses |
 
+## Deduction Calculators
+
+The application includes built-in calculators for common self-employment deductions. Click the deduction buttons in the Tax Summary panel to open the calculator dialogs.
+
+### Home Office Deduction
+
+Calculate your home office deduction based on:
+- **Office Space Percentage** - The percentage of your home used exclusively for business
+- **Monthly Rent** - Your monthly rent or mortgage payment
+- **Monthly Utilities** - Electric, gas, water, internet, etc.
+- **Monthly Insurance** - Renter's or homeowner's insurance
+
+The deduction is calculated as: `(Rent + Utilities + Insurance) × Office % × Months`
+
+### Car Deduction
+
+Choose between two mutually exclusive methods:
+
+| Method | Calculation |
+|--------|-------------|
+| **Standard Mileage Rate** | Business miles driven × $0.70/mile (2024 IRS rate) |
+| **Actual Expenses** | (Business miles ÷ Total miles) × Cost of car |
+
+The Standard Mileage Rate is simpler but the Actual Expenses method may result in a larger deduction for expensive vehicles with high business use.
+
 ## Tax Summary Display
 
 The tax summary shows two columns side-by-side:
@@ -72,6 +99,8 @@ The tax summary shows two columns side-by-side:
 --- INCOME ---
 Freelance (Tax Already Paid) $  5,000.00  $ 10,000.00
 Revenue (Sales Tax Bundled)  $ 12,000.00  $ 24,000.00
+Business Expenses            $ -2,000.00  $ -4,000.00
+Deductions                   $ -1,500.00  $ -3,000.00
 ...
 
 --- TAXES ---
@@ -97,7 +126,7 @@ Taxes are calculated using progressive brackets loaded from CSV files:
 ### Calculation Flow
 
 1. **Sales Tax** = Revenue (Bundled) / (1 + rate) × rate
-2. **Business Profit** = Sales Taxable + Revenue (Applied) - Expenses
+2. **Business Profit** = Sales Taxable + Revenue (Applied) - Expenses - Deductions
 3. **Total Profit** = Business Profit + Freelance Income
 4. **Self-Employment Tax** = (Business Profit × 92.35%) × (12.4% SS + 2.9% Medicare)
 5. **Taxable Income** = Business Profit - (SE Tax × 50%)
@@ -194,4 +223,19 @@ Tax rates sourced from:
 - [IRS Federal Income Tax Brackets 2025](https://www.irs.gov/filing/federal-income-tax-rates-and-brackets)
 - [California FTB Tax Rate Schedules](https://www.ftb.ca.gov/forms/2025/2025-540-tax-rate-schedules.pdf)
 - [IRS Self-Employment Tax](https://www.irs.gov/businesses/small-businesses-self-employed/self-employment-tax-social-security-and-medicare-taxes)
+- [IRS Standard Mileage Rates](https://www.irs.gov/tax-professionals/standard-mileage-rates)
 - [California CDTFA Sales Tax Rates](https://cdtfa.ca.gov/taxes-and-fees/rates.aspx)
+
+## Disclaimer
+
+**This application is provided for informational and educational purposes only.**
+
+- This is **not** financial, tax, or legal advice
+- Tax laws are complex, change frequently, and vary by jurisdiction
+- Calculations may not account for all deductions, credits, or special circumstances applicable to your situation
+- The standard mileage rate and other values may be outdated; verify current rates with the IRS
+- Always consult a qualified tax professional, CPA, or tax attorney for advice specific to your situation
+- The developers make no warranties about the accuracy or completeness of the calculations
+- Use of this application is at your own risk
+
+**Do not rely solely on this application for tax planning or filing purposes.**
