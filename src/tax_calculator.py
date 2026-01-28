@@ -6,9 +6,16 @@ income including:
 - California state income tax (progressive brackets)
 - Self-employment tax (Social Security + Medicare)
 - Sales tax
+- Manual deductions (home office, car expenses)
 
 Tax rates are loaded from CSV files in the tax_rates/ directory, making them
 easy to update for new tax years or different jurisdictions.
+
+Disclaimer:
+    This module is for informational and educational purposes only. It does not
+    constitute financial, tax, or legal advice. Tax laws are complex and vary by
+    jurisdiction. Always consult a qualified tax professional for advice specific
+    to your situation.
 
 Classes:
     TaxBracket: Represents a single progressive tax bracket.

@@ -5,13 +5,14 @@ This module provides the main graphical user interface for Taximate, featuring:
 - Drag-and-drop CSV file loading
 - Multi-file selection via file browser dialog
 - Transaction item categorization with visual feedback
+- Deduction calculators for home office and car expenses
 - Real-time tax calculation with side-by-side period/annual comparison
 - Version display from package metadata
 
 The GUI uses a three-panel layout:
 - Left: Transaction items list with category indicators
 - Center: Category assignment controls and category contents
-- Right: Tax calculation summary with period and annualized columns
+- Right: Tax calculation summary with deduction buttons and period/annualized columns
 
 Styling:
     The interface uses a modern color scheme with:
@@ -20,12 +21,18 @@ Styling:
     - Success (green): Positive actions (assign, calculate)
     - Danger (red): Destructive actions (clear data)
 
+Disclaimer:
+    This application is for informational purposes only and does not constitute
+    financial, tax, or legal advice. Consult a qualified tax professional.
+
 Functions:
     get_version: Get package version from metadata.
     run_app: Create and launch the application.
 
 Classes:
     DropZone: Drag-and-drop area for CSV files.
+    HomeOfficeDeductionDialog: Calculator for home office deduction.
+    CarDeductionDialog: Calculator for car/vehicle deduction.
     TaximateGUI: Main application window.
 """
 
@@ -662,7 +669,7 @@ class CarDeductionDialog(QDialog):
             business_miles = self.business_miles_spinbox.value()
             self._calculated_deduction = business_miles * self.STANDARD_MILEAGE_RATE
             self.result_label.setText(
-                f"{business_miles:,.0f} miles × ${self.STANDARD_MILEAGE_RATE:.2f}/mile\n"
+                f"{business_miles:,.0f} miles * ${self.STANDARD_MILEAGE_RATE:.2f}/mile\n"
                 f"Deduction: ${self._calculated_deduction:,.2f}"
             )
         else:
