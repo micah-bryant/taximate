@@ -40,6 +40,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QButtonGroup,
     QComboBox,
     QDialog,
     QDoubleSpinBox,
@@ -53,6 +54,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QRadioButton,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -532,35 +534,55 @@ class CarDeductionDialog(QDialog):
 
         # Description
         desc_label = QLabel(
-            "Calculate your car deduction using the standard mileage rate "
-            f"(${self.STANDARD_MILEAGE_RATE:.2f}/mile) and/or the upfront cost "
-            "depreciation based on business use percentage."
+            "Choose a deduction method: Standard Mileage Rate "
+            f"(${self.STANDARD_MILEAGE_RATE:.2f}/mile) or Actual Expenses "
+            "(business use percentage of car cost)."
         )
         desc_label.setWordWrap(True)
         desc_label.setStyleSheet(f"color: {COLORS['text_muted']};")
         layout.addWidget(desc_label)
 
-        # Standard mileage inputs
-        standard_group = QGroupBox("Standard Mileage Deduction")
-        standard_layout = QFormLayout(standard_group)
-        standard_layout.setSpacing(16)
-        standard_layout.setContentsMargins(16, 20, 16, 16)
+        # Method selection with radio buttons
+        self.method_group = QButtonGroup(self)
 
+        # Standard mileage option
+        self.standard_group = QGroupBox()
+        standard_header = QVBoxLayout(self.standard_group)
+        standard_header.setContentsMargins(16, 16, 16, 16)
+        standard_header.setSpacing(16)
+
+        self.standard_radio = QRadioButton("Standard Mileage Rate")
+        self.standard_radio.setChecked(True)
+        self.standard_radio.setStyleSheet("font-weight: 600;")
+        self.method_group.addButton(self.standard_radio, 0)
+        standard_header.addWidget(self.standard_radio)
+
+        standard_form = QFormLayout()
+        standard_form.setSpacing(12)
         self.business_miles_spinbox = QDoubleSpinBox()
         self.business_miles_spinbox.setRange(0, 999999)
         self.business_miles_spinbox.setSuffix(" miles")
         self.business_miles_spinbox.setDecimals(0)
         self.business_miles_spinbox.setMinimumHeight(32)
         self.business_miles_spinbox.valueChanged.connect(self._update_calculation)
-        standard_layout.addRow("Business Miles Driven:", self.business_miles_spinbox)
+        standard_form.addRow("Business Miles Driven:", self.business_miles_spinbox)
+        standard_header.addLayout(standard_form)
 
-        layout.addWidget(standard_group)
+        layout.addWidget(self.standard_group)
 
-        # Upfront cost inputs
-        upfront_group = QGroupBox("Upfront Cost Depreciation (Optional)")
-        upfront_layout = QFormLayout(upfront_group)
-        upfront_layout.setSpacing(16)
-        upfront_layout.setContentsMargins(16, 20, 16, 16)
+        # Actual expense option
+        self.actual_group = QGroupBox()
+        actual_header = QVBoxLayout(self.actual_group)
+        actual_header.setContentsMargins(16, 16, 16, 16)
+        actual_header.setSpacing(16)
+
+        self.actual_radio = QRadioButton("Actual Expenses")
+        self.actual_radio.setStyleSheet("font-weight: 600;")
+        self.method_group.addButton(self.actual_radio, 1)
+        actual_header.addWidget(self.actual_radio)
+
+        actual_form = QFormLayout()
+        actual_form.setSpacing(12)
 
         self.total_miles_spinbox = QDoubleSpinBox()
         self.total_miles_spinbox.setRange(0, 999999)
@@ -568,17 +590,30 @@ class CarDeductionDialog(QDialog):
         self.total_miles_spinbox.setDecimals(0)
         self.total_miles_spinbox.setMinimumHeight(32)
         self.total_miles_spinbox.valueChanged.connect(self._update_calculation)
-        upfront_layout.addRow("Total Miles Driven:", self.total_miles_spinbox)
+        actual_form.addRow("Total Miles Driven:", self.total_miles_spinbox)
 
-        self.upfront_cost_spinbox = QDoubleSpinBox()
-        self.upfront_cost_spinbox.setRange(0, 999999.99)
-        self.upfront_cost_spinbox.setPrefix("$")
-        self.upfront_cost_spinbox.setDecimals(2)
-        self.upfront_cost_spinbox.setMinimumHeight(32)
-        self.upfront_cost_spinbox.valueChanged.connect(self._update_calculation)
-        upfront_layout.addRow("Upfront Cost of Car:", self.upfront_cost_spinbox)
+        self.actual_business_miles_spinbox = QDoubleSpinBox()
+        self.actual_business_miles_spinbox.setRange(0, 999999)
+        self.actual_business_miles_spinbox.setSuffix(" miles")
+        self.actual_business_miles_spinbox.setDecimals(0)
+        self.actual_business_miles_spinbox.setMinimumHeight(32)
+        self.actual_business_miles_spinbox.valueChanged.connect(self._update_calculation)
+        actual_form.addRow("Business Miles Driven:", self.actual_business_miles_spinbox)
 
-        layout.addWidget(upfront_group)
+        self.car_cost_spinbox = QDoubleSpinBox()
+        self.car_cost_spinbox.setRange(0, 999999.99)
+        self.car_cost_spinbox.setPrefix("$")
+        self.car_cost_spinbox.setDecimals(2)
+        self.car_cost_spinbox.setMinimumHeight(32)
+        self.car_cost_spinbox.valueChanged.connect(self._update_calculation)
+        actual_form.addRow("Cost of Car:", self.car_cost_spinbox)
+
+        actual_header.addLayout(actual_form)
+        layout.addWidget(self.actual_group)
+
+        # Connect radio buttons
+        self.standard_radio.toggled.connect(self._on_method_changed)
+        self.actual_radio.toggled.connect(self._on_method_changed)
 
         # Calculation result display
         self.result_label = QLabel()
@@ -587,7 +622,7 @@ class CarDeductionDialog(QDialog):
             "padding: 16px; background-color: #eff6ff; border-radius: 6px;"
         )
         self.result_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.result_label.setMinimumHeight(70)
+        self.result_label.setMinimumHeight(60)
         layout.addWidget(self.result_label)
 
         # Buttons
@@ -609,47 +644,43 @@ class CarDeductionDialog(QDialog):
 
         layout.addLayout(button_layout)
 
+        self._on_method_changed()
+        self._update_calculation()
+
+    def _on_method_changed(self) -> None:
+        """Handle method selection change - enable/disable input groups."""
+        is_standard = self.standard_radio.isChecked()
+        self.business_miles_spinbox.setEnabled(is_standard)
+        self.total_miles_spinbox.setEnabled(not is_standard)
+        self.actual_business_miles_spinbox.setEnabled(not is_standard)
+        self.car_cost_spinbox.setEnabled(not is_standard)
         self._update_calculation()
 
     def _update_calculation(self) -> None:
         """Update the calculated deduction based on current inputs."""
-        business_miles = self.business_miles_spinbox.value()
-        total_miles = self.total_miles_spinbox.value()
-        upfront_cost = self.upfront_cost_spinbox.value()
-
-        # Standard mileage deduction
-        mileage_deduction = business_miles * self.STANDARD_MILEAGE_RATE
-
-        # Upfront cost depreciation (business miles / total miles * upfront cost)
-        upfront_deduction = 0.0
-        business_percentage = 0.0
-        if total_miles > 0 and upfront_cost > 0:
-            business_percentage = business_miles / total_miles
-            upfront_deduction = business_percentage * upfront_cost
-
-        self._calculated_deduction = mileage_deduction + upfront_deduction
-
-        # Build result text
-        lines = []
-        if mileage_deduction > 0:
-            lines.append(
-                f"Mileage: {business_miles:,.0f} mi x ${self.STANDARD_MILEAGE_RATE:.2f} = "
-                f"${mileage_deduction:,.2f}"
+        if self.standard_radio.isChecked():
+            business_miles = self.business_miles_spinbox.value()
+            self._calculated_deduction = business_miles * self.STANDARD_MILEAGE_RATE
+            self.result_label.setText(
+                f"{business_miles:,.0f} miles × ${self.STANDARD_MILEAGE_RATE:.2f}/mile\n"
+                f"Deduction: ${self._calculated_deduction:,.2f}"
             )
-        if upfront_deduction > 0:
-            lines.append(
-                f"Upfront: {business_percentage * 100:.1f}% of ${upfront_cost:,.2f} = "
-                f"${upfront_deduction:,.2f}"
-            )
-        if self._calculated_deduction > 0:
-            if len(lines) > 1:
-                lines.append(f"Total Deduction: ${self._calculated_deduction:,.2f}")
-            else:
-                lines.append(f"Deduction: ${self._calculated_deduction:,.2f}")
         else:
-            lines.append("Enter values to calculate deduction")
+            total_miles = self.total_miles_spinbox.value()
+            business_miles = self.actual_business_miles_spinbox.value()
+            car_cost = self.car_cost_spinbox.value()
 
-        self.result_label.setText("\n".join(lines))
+            if total_miles > 0:
+                business_percentage = business_miles / total_miles
+                self._calculated_deduction = business_percentage * car_cost
+                self.result_label.setText(
+                    f"Business Use: {business_percentage * 100:.1f}% "
+                    f"({business_miles:,.0f} / {total_miles:,.0f} miles)\n"
+                    f"Deduction: ${self._calculated_deduction:,.2f}"
+                )
+            else:
+                self._calculated_deduction = 0.0
+                self.result_label.setText("Enter total miles to calculate")
 
     def get_deduction(self) -> float:
         """Return the calculated deduction amount."""
