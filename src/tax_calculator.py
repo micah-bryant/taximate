@@ -312,8 +312,14 @@ class TaxCalculator:
         self.categories: dict[str, IncomeCategory] = {}
         self.item_to_category: dict[str, str] = {}
         self.tax_rates = TaxRates(tax_rates_dir)
-        self.manual_deductions: float = 0.0  # Manual deductions (e.g., home office)
+        self.home_office_deduction: float = 0.0
+        self.car_deduction: float = 0.0
         self._setup_default_categories()
+
+    @property
+    def manual_deductions(self) -> float:
+        """Total of all manual deductions."""
+        return self.home_office_deduction + self.car_deduction
 
     def _setup_default_categories(self) -> None:
         """Set up the four main income/expense categories."""

@@ -400,6 +400,8 @@ class HomeOfficeDeductionDialog(QDialog):
     def _create_widgets(self) -> None:
         """Create dialog widgets."""
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(16)
 
         # Description
         desc_label = QLabel(
@@ -407,12 +409,14 @@ class HomeOfficeDeductionDialog(QDialog):
             "your home used for business and your monthly housing expenses."
         )
         desc_label.setWordWrap(True)
-        desc_label.setStyleSheet(f"color: {COLORS['text_muted']}; margin-bottom: 12px;")
+        desc_label.setStyleSheet(f"color: {COLORS['text_muted']};")
         layout.addWidget(desc_label)
 
         # Form layout for inputs
-        form_layout = QFormLayout()
-        form_layout.setSpacing(12)
+        form_group = QGroupBox("Monthly Expenses")
+        form_layout = QFormLayout(form_group)
+        form_layout.setSpacing(16)
+        form_layout.setContentsMargins(16, 20, 16, 16)
 
         # Office percentage
         self.percentage_spinbox = QDoubleSpinBox()
@@ -420,6 +424,7 @@ class HomeOfficeDeductionDialog(QDialog):
         self.percentage_spinbox.setValue(10)
         self.percentage_spinbox.setSuffix("%")
         self.percentage_spinbox.setDecimals(1)
+        self.percentage_spinbox.setMinimumHeight(32)
         self.percentage_spinbox.valueChanged.connect(self._update_calculation)
         form_layout.addRow("Office Space Percentage:", self.percentage_spinbox)
 
@@ -428,6 +433,7 @@ class HomeOfficeDeductionDialog(QDialog):
         self.rent_spinbox.setRange(0, 99999.99)
         self.rent_spinbox.setPrefix("$")
         self.rent_spinbox.setDecimals(2)
+        self.rent_spinbox.setMinimumHeight(32)
         self.rent_spinbox.valueChanged.connect(self._update_calculation)
         form_layout.addRow("Monthly Rent:", self.rent_spinbox)
 
@@ -436,6 +442,7 @@ class HomeOfficeDeductionDialog(QDialog):
         self.utilities_spinbox.setRange(0, 9999.99)
         self.utilities_spinbox.setPrefix("$")
         self.utilities_spinbox.setDecimals(2)
+        self.utilities_spinbox.setMinimumHeight(32)
         self.utilities_spinbox.valueChanged.connect(self._update_calculation)
         form_layout.addRow("Monthly Utilities:", self.utilities_spinbox)
 
@@ -444,32 +451,36 @@ class HomeOfficeDeductionDialog(QDialog):
         self.insurance_spinbox.setRange(0, 9999.99)
         self.insurance_spinbox.setPrefix("$")
         self.insurance_spinbox.setDecimals(2)
+        self.insurance_spinbox.setMinimumHeight(32)
         self.insurance_spinbox.valueChanged.connect(self._update_calculation)
         form_layout.addRow("Monthly Insurance:", self.insurance_spinbox)
 
-        layout.addLayout(form_layout)
+        layout.addWidget(form_group)
 
         # Calculation result display
         self.result_label = QLabel()
         self.result_label.setStyleSheet(
             f"font-size: 14px; font-weight: 600; color: {COLORS['primary']}; "
-            "margin-top: 16px; padding: 12px; background-color: #eff6ff; "
-            "border-radius: 6px;"
+            "padding: 16px; background-color: #eff6ff; border-radius: 6px;"
         )
         self.result_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.result_label.setMinimumHeight(60)
         layout.addWidget(self.result_label)
 
         # Buttons
         button_layout = QHBoxLayout()
+        button_layout.setSpacing(12)
         button_layout.addStretch()
 
         cancel_btn = QPushButton("Cancel")
         cancel_btn.setObjectName("secondaryButton")
+        cancel_btn.setMinimumWidth(100)
         cancel_btn.clicked.connect(self.reject)
         button_layout.addWidget(cancel_btn)
 
         apply_btn = QPushButton("Apply Deduction")
         apply_btn.setObjectName("successButton")
+        apply_btn.setMinimumWidth(120)
         apply_btn.clicked.connect(self.accept)
         button_layout.addWidget(apply_btn)
 
@@ -492,6 +503,153 @@ class HomeOfficeDeductionDialog(QDialog):
             f"Monthly Deduction: ${monthly_deduction:,.2f}\n"
             f"Period Deduction ({self.months} mo): ${self._calculated_deduction:,.2f}"
         )
+
+    def get_deduction(self) -> float:
+        """Return the calculated deduction amount."""
+        return self._calculated_deduction
+
+
+class CarDeductionDialog(QDialog):
+    """Dialog for calculating car/vehicle deduction."""
+
+    STANDARD_MILEAGE_RATE = 0.70  # 70 cents per mile for 2024
+
+    def __init__(self, parent: QWidget | None = None, months: int = 12) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Car Deduction Calculator")
+        self.setModal(True)
+        self.setMinimumWidth(450)
+        self.months = months
+        self._calculated_deduction: float = 0.0
+
+        self._create_widgets()
+
+    def _create_widgets(self) -> None:
+        """Create dialog widgets."""
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(16)
+
+        # Description
+        desc_label = QLabel(
+            "Calculate your car deduction using the standard mileage rate "
+            f"(${self.STANDARD_MILEAGE_RATE:.2f}/mile) and/or the upfront cost "
+            "depreciation based on business use percentage."
+        )
+        desc_label.setWordWrap(True)
+        desc_label.setStyleSheet(f"color: {COLORS['text_muted']};")
+        layout.addWidget(desc_label)
+
+        # Standard mileage inputs
+        standard_group = QGroupBox("Standard Mileage Deduction")
+        standard_layout = QFormLayout(standard_group)
+        standard_layout.setSpacing(16)
+        standard_layout.setContentsMargins(16, 20, 16, 16)
+
+        self.business_miles_spinbox = QDoubleSpinBox()
+        self.business_miles_spinbox.setRange(0, 999999)
+        self.business_miles_spinbox.setSuffix(" miles")
+        self.business_miles_spinbox.setDecimals(0)
+        self.business_miles_spinbox.setMinimumHeight(32)
+        self.business_miles_spinbox.valueChanged.connect(self._update_calculation)
+        standard_layout.addRow("Business Miles Driven:", self.business_miles_spinbox)
+
+        layout.addWidget(standard_group)
+
+        # Upfront cost inputs
+        upfront_group = QGroupBox("Upfront Cost Depreciation (Optional)")
+        upfront_layout = QFormLayout(upfront_group)
+        upfront_layout.setSpacing(16)
+        upfront_layout.setContentsMargins(16, 20, 16, 16)
+
+        self.total_miles_spinbox = QDoubleSpinBox()
+        self.total_miles_spinbox.setRange(0, 999999)
+        self.total_miles_spinbox.setSuffix(" miles")
+        self.total_miles_spinbox.setDecimals(0)
+        self.total_miles_spinbox.setMinimumHeight(32)
+        self.total_miles_spinbox.valueChanged.connect(self._update_calculation)
+        upfront_layout.addRow("Total Miles Driven:", self.total_miles_spinbox)
+
+        self.upfront_cost_spinbox = QDoubleSpinBox()
+        self.upfront_cost_spinbox.setRange(0, 999999.99)
+        self.upfront_cost_spinbox.setPrefix("$")
+        self.upfront_cost_spinbox.setDecimals(2)
+        self.upfront_cost_spinbox.setMinimumHeight(32)
+        self.upfront_cost_spinbox.valueChanged.connect(self._update_calculation)
+        upfront_layout.addRow("Upfront Cost of Car:", self.upfront_cost_spinbox)
+
+        layout.addWidget(upfront_group)
+
+        # Calculation result display
+        self.result_label = QLabel()
+        self.result_label.setStyleSheet(
+            f"font-size: 14px; font-weight: 600; color: {COLORS['primary']}; "
+            "padding: 16px; background-color: #eff6ff; border-radius: 6px;"
+        )
+        self.result_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.result_label.setMinimumHeight(70)
+        layout.addWidget(self.result_label)
+
+        # Buttons
+        button_layout = QHBoxLayout()
+        button_layout.setSpacing(12)
+        button_layout.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setObjectName("secondaryButton")
+        cancel_btn.setMinimumWidth(100)
+        cancel_btn.clicked.connect(self.reject)
+        button_layout.addWidget(cancel_btn)
+
+        apply_btn = QPushButton("Apply Deduction")
+        apply_btn.setObjectName("successButton")
+        apply_btn.setMinimumWidth(120)
+        apply_btn.clicked.connect(self.accept)
+        button_layout.addWidget(apply_btn)
+
+        layout.addLayout(button_layout)
+
+        self._update_calculation()
+
+    def _update_calculation(self) -> None:
+        """Update the calculated deduction based on current inputs."""
+        business_miles = self.business_miles_spinbox.value()
+        total_miles = self.total_miles_spinbox.value()
+        upfront_cost = self.upfront_cost_spinbox.value()
+
+        # Standard mileage deduction
+        mileage_deduction = business_miles * self.STANDARD_MILEAGE_RATE
+
+        # Upfront cost depreciation (business miles / total miles * upfront cost)
+        upfront_deduction = 0.0
+        business_percentage = 0.0
+        if total_miles > 0 and upfront_cost > 0:
+            business_percentage = business_miles / total_miles
+            upfront_deduction = business_percentage * upfront_cost
+
+        self._calculated_deduction = mileage_deduction + upfront_deduction
+
+        # Build result text
+        lines = []
+        if mileage_deduction > 0:
+            lines.append(
+                f"Mileage: {business_miles:,.0f} mi x ${self.STANDARD_MILEAGE_RATE:.2f} = "
+                f"${mileage_deduction:,.2f}"
+            )
+        if upfront_deduction > 0:
+            lines.append(
+                f"Upfront: {business_percentage * 100:.1f}% of ${upfront_cost:,.2f} = "
+                f"${upfront_deduction:,.2f}"
+            )
+        if self._calculated_deduction > 0:
+            if len(lines) > 1:
+                lines.append(f"Total Deduction: ${self._calculated_deduction:,.2f}")
+            else:
+                lines.append(f"Deduction: ${self._calculated_deduction:,.2f}")
+        else:
+            lines.append("Enter values to calculate deduction")
+
+        self.result_label.setText("\n".join(lines))
 
     def get_deduction(self) -> float:
         """Return the calculated deduction amount."""
@@ -622,11 +780,21 @@ class TaximateGUI(QWidget):
         self.uncategorized_label.setStyleSheet(f"color: {COLORS['text_muted']}; padding: 8px;")
         right_layout.addWidget(self.uncategorized_label)
 
-        # Deductions button
-        self.deductions_btn = QPushButton("Home Office Deduction...")
-        self.deductions_btn.setObjectName("secondaryButton")
-        self.deductions_btn.clicked.connect(self._show_home_office_dialog)
-        right_layout.addWidget(self.deductions_btn)
+        # Deductions buttons
+        deductions_layout = QHBoxLayout()
+
+        self.home_office_btn = QPushButton("Home Office...")
+        self.home_office_btn.setObjectName("secondaryButton")
+        self.home_office_btn.clicked.connect(self._show_home_office_dialog)
+        deductions_layout.addWidget(self.home_office_btn)
+
+        self.car_deduction_btn = QPushButton("Car Deduction...")
+        self.car_deduction_btn.setObjectName("secondaryButton")
+        self.car_deduction_btn.clicked.connect(self._show_car_deduction_dialog)
+        deductions_layout.addWidget(self.car_deduction_btn)
+
+        deductions_layout.addStretch()
+        right_layout.addLayout(deductions_layout)
 
         # Deduction display label
         self.deduction_label = QLabel("No deductions applied")
@@ -804,18 +972,38 @@ class TaximateGUI(QWidget):
         dialog = HomeOfficeDeductionDialog(self, months)
 
         if dialog.exec():
-            deduction = dialog.get_deduction()
-            self.calculator.manual_deductions = deduction
-            if deduction > 0:
-                self.deduction_label.setText(
-                    f"Home Office Deduction: ${deduction:,.2f} ({months} mo)"
-                )
-                self.deduction_label.setStyleSheet(
-                    f"color: {COLORS['success']}; font-weight: 500; padding: 4px;"
-                )
-            else:
-                self.deduction_label.setText("No deductions applied")
-                self.deduction_label.setStyleSheet(f"color: {COLORS['text_muted']}; padding: 4px;")
+            self.calculator.home_office_deduction = dialog.get_deduction()
+            self._update_deduction_label()
+
+    def _show_car_deduction_dialog(self) -> None:
+        """Show the car deduction calculator dialog."""
+        months = self.months_spinbox.value()
+        dialog = CarDeductionDialog(self, months)
+
+        if dialog.exec():
+            self.calculator.car_deduction = dialog.get_deduction()
+            self._update_deduction_label()
+
+    def _update_deduction_label(self) -> None:
+        """Update the deduction label with current deductions."""
+        deductions = []
+        if self.calculator.home_office_deduction > 0:
+            deductions.append(f"Home Office: ${self.calculator.home_office_deduction:,.2f}")
+        if self.calculator.car_deduction > 0:
+            deductions.append(f"Car: ${self.calculator.car_deduction:,.2f}")
+
+        if deductions:
+            total = self.calculator.manual_deductions
+            text = " | ".join(deductions)
+            if len(deductions) > 1:
+                text += f" | Total: ${total:,.2f}"
+            self.deduction_label.setText(text)
+            self.deduction_label.setStyleSheet(
+                f"color: {COLORS['success']}; font-weight: 500; padding: 4px;"
+            )
+        else:
+            self.deduction_label.setText("No deductions applied")
+            self.deduction_label.setStyleSheet(f"color: {COLORS['text_muted']}; padding: 4px;")
 
     def _calculate_taxes(self) -> None:
         """Calculate and display tax summary in table format."""
