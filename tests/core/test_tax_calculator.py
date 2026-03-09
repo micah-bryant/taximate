@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 
 from taximate.core.tax_calculator import (
+    DisplayRow,
+    SummaryResult,
     TaxCalculator,
     TaxInputs,
     TaxRates,
@@ -216,8 +218,8 @@ def test_tax_calculator_calculate_taxes_expenses_reduce_tax(tax_rates_dir: Path)
     assert high_result.total_income_tax < base_result.total_income_tax
 
 
-def test_tax_calculator_generate_summary_keys(tax_rates_dir: Path) -> None:
-    """generate_summary returns expected keys."""
+def test_tax_calculator_generate_summary_returns_summary_result(tax_rates_dir: Path) -> None:
+    """generate_summary returns a SummaryResult with correct typed attributes."""
 
     from taximate.core.data_loader import load_csvs_from_paths
     from taximate.core.tax_calculator import CATEGORY_REVENUE_SALES_TAX_APPLIED
@@ -229,17 +231,76 @@ def test_tax_calculator_generate_summary_keys(tax_rates_dir: Path) -> None:
     df = load_csvs_from_paths(csv_files)
     calc = TaxCalculator(tax_rates_dir)
 
-    # Assign some items so there's something to calculate
     items = df["Item"].unique()[:2].tolist()
     for item in items:
         calc.assign_item_to_category(item, CATEGORY_REVENUE_SALES_TAX_APPLIED)
 
     summary = calc.generate_summary(df, months=12)
-    assert "tax_inputs" in summary
-    assert "annual_inputs" in summary
-    assert "period_taxes" in summary
-    assert "annual_taxes" in summary
-    assert "uncategorized_count" in summary
+    assert isinstance(summary, SummaryResult)
+    assert isinstance(summary.tax_inputs, TaxInputs)
+    assert isinstance(summary.annual_inputs, TaxInputs)
+    assert isinstance(summary.period_taxes, TaxResults)
+    assert isinstance(summary.annual_taxes, TaxResults)
+    assert isinstance(summary.uncategorized_count, int)
+
+
+# ---------------------------------------------------------------------------
+# TaxResults.display_rows
+# ---------------------------------------------------------------------------
+
+
+def test_display_rows_returns_list_of_display_row(tax_rates_dir: Path) -> None:
+    calc = TaxCalculator(tax_rates_dir)
+    inputs = TaxInputs(
+        all_tax_applied=1000.0,
+        sales_tax_bundled=2000.0,
+        sales_tax_applied=500.0,
+        expenses=300.0,
+    )
+    results = calc.calculate_taxes(inputs)
+    rows = results.display_rows()
+    assert isinstance(rows, list)
+    assert all(isinstance(r, DisplayRow) for r in rows)
+
+
+def test_display_rows_count(tax_rates_dir: Path) -> None:
+    calc = TaxCalculator(tax_rates_dir)
+    inputs = TaxInputs(
+        all_tax_applied=0.0, sales_tax_bundled=0.0, sales_tax_applied=10000.0, expenses=0.0
+    )
+    rows = calc.calculate_taxes(inputs).display_rows()
+    assert len(rows) == 21
+
+
+def test_display_rows_section_headers_present(tax_rates_dir: Path) -> None:
+    calc = TaxCalculator(tax_rates_dir)
+    inputs = TaxInputs(
+        all_tax_applied=0.0, sales_tax_bundled=0.0, sales_tax_applied=10000.0, expenses=0.0
+    )
+    rows = calc.calculate_taxes(inputs).display_rows()
+    header_sections = {r.section for r in rows if r.is_section_header}
+    assert header_sections == {"INCOME", "PROFIT", "TAXES", "SUMMARY"}
+
+
+def test_display_rows_take_home_is_bold(tax_rates_dir: Path) -> None:
+    calc = TaxCalculator(tax_rates_dir)
+    inputs = TaxInputs(
+        all_tax_applied=0.0, sales_tax_bundled=0.0, sales_tax_applied=10000.0, expenses=0.0
+    )
+    rows = calc.calculate_taxes(inputs).display_rows()
+    take_home = next(r for r in rows if r.label == "TAKE HOME")
+    assert take_home.bold is True
+
+
+def test_display_rows_expenses_negate_flag(tax_rates_dir: Path) -> None:
+    calc = TaxCalculator(tax_rates_dir)
+    inputs = TaxInputs(
+        all_tax_applied=0.0, sales_tax_bundled=0.0, sales_tax_applied=10000.0, expenses=500.0
+    )
+    rows = calc.calculate_taxes(inputs).display_rows()
+    expenses_row = next(r for r in rows if "Expenses" in r.label)
+    assert expenses_row.negate is True
+    assert expenses_row.value > 0
 
 
 def test_tax_calculator_period_vs_annual(tax_rates_dir: Path) -> None:

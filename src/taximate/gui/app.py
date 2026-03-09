@@ -47,12 +47,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
-    QButtonGroup,
     QComboBox,
-    QDialog,
-    QDoubleSpinBox,
     QFileDialog,
-    QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
@@ -61,7 +57,6 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
-    QRadioButton,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -71,7 +66,9 @@ from PySide6.QtWidgets import (
 )
 
 from taximate.core.data_loader import get_unique_values, load_csvs_from_paths
-from taximate.core.tax_calculator import TaxCalculator, TaxResults
+from taximate.core.tax_calculator import SummaryResult, TaxCalculator
+from taximate.gui._dialogs import CarDeductionDialog, HomeOfficeDeductionDialog
+from taximate.gui._styles import COLORS, STYLESHEET
 
 if TYPE_CHECKING:
     from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDropEvent, QMouseEvent
@@ -83,240 +80,6 @@ def get_version() -> str:
         return version("taximate")
     except PackageNotFoundError:
         return "dev"
-
-
-# Modern color scheme based on Tailwind CSS color palette
-COLORS: dict[str, str] = {
-    "primary": "#2563eb",  # Blue
-    "primary_hover": "#1d4ed8",
-    "primary_pressed": "#1e40af",
-    "secondary": "#64748b",  # Slate
-    "secondary_hover": "#475569",
-    "success": "#16a34a",  # Green
-    "success_hover": "#15803d",
-    "danger": "#dc2626",  # Red
-    "background": "#f8fafc",
-    "surface": "#ffffff",
-    "border": "#e2e8f0",
-    "text": "#1e293b",
-    "text_muted": "#64748b",
-}
-
-# Qt stylesheet for modern widget appearance with hover/pressed states
-STYLESHEET: str = f"""
-    QWidget {{
-        background-color: {COLORS["background"]};
-        color: {COLORS["text"]};
-        font-family: "Segoe UI", "SF Pro Display", system-ui, sans-serif;
-        font-size: 13px;
-    }}
-
-    QPushButton {{
-        background-color: {COLORS["primary"]};
-        color: white;
-        border: none;
-        border-radius: 6px;
-        padding: 8px 16px;
-        font-weight: 500;
-    }}
-
-    QPushButton:hover {{
-        background-color: {COLORS["primary_hover"]};
-    }}
-
-    QPushButton:pressed {{
-        background-color: {COLORS["primary_pressed"]};
-    }}
-
-    QPushButton:disabled {{
-        background-color: {COLORS["border"]};
-        color: {COLORS["text_muted"]};
-    }}
-
-    QPushButton#secondaryButton {{
-        background-color: {COLORS["surface"]};
-        color: {COLORS["text"]};
-        border: 1px solid {COLORS["border"]};
-    }}
-
-    QPushButton#secondaryButton:hover {{
-        background-color: {COLORS["background"]};
-        border-color: {COLORS["secondary"]};
-    }}
-
-    QPushButton#dangerButton {{
-        background-color: {COLORS["danger"]};
-    }}
-
-    QPushButton#dangerButton:hover {{
-        background-color: #b91c1c;
-    }}
-
-    QPushButton#successButton {{
-        background-color: {COLORS["success"]};
-    }}
-
-    QPushButton#successButton:hover {{
-        background-color: {COLORS["success_hover"]};
-    }}
-
-    QGroupBox {{
-        background-color: {COLORS["surface"]};
-        border: 1px solid {COLORS["border"]};
-        border-radius: 8px;
-        margin-top: 12px;
-        padding: 12px;
-        font-weight: 600;
-    }}
-
-    QGroupBox::title {{
-        subcontrol-origin: margin;
-        subcontrol-position: top left;
-        left: 12px;
-        padding: 0 8px;
-        color: {COLORS["text"]};
-        background-color: {COLORS["surface"]};
-    }}
-
-    QListWidget {{
-        background-color: {COLORS["surface"]};
-        border: 1px solid {COLORS["border"]};
-        border-radius: 6px;
-        padding: 4px;
-        outline: none;
-    }}
-
-    QListWidget::item {{
-        padding: 8px 12px;
-        border-radius: 4px;
-        margin: 2px 0;
-    }}
-
-    QListWidget::item:hover {{
-        background-color: {COLORS["background"]};
-    }}
-
-    QListWidget::item:selected {{
-        background-color: {COLORS["primary"]};
-        color: white;
-    }}
-
-    QComboBox {{
-        background-color: {COLORS["surface"]};
-        border: 1px solid {COLORS["border"]};
-        border-radius: 6px;
-        padding: 8px 12px;
-        min-width: 200px;
-    }}
-
-    QComboBox:hover {{
-        border-color: {COLORS["primary"]};
-    }}
-
-    QComboBox::drop-down {{
-        border: none;
-        width: 24px;
-    }}
-
-    QComboBox::down-arrow {{
-        image: none;
-        border-left: 5px solid transparent;
-        border-right: 5px solid transparent;
-        border-top: 6px solid {COLORS["secondary"]};
-        margin-right: 8px;
-    }}
-
-    QComboBox QAbstractItemView {{
-        background-color: {COLORS["surface"]};
-        border: 1px solid {COLORS["border"]};
-        border-radius: 6px;
-        selection-background-color: {COLORS["primary"]};
-        selection-color: white;
-        padding: 4px;
-    }}
-
-    QTextEdit {{
-        background-color: {COLORS["surface"]};
-        border: 1px solid {COLORS["border"]};
-        border-radius: 6px;
-        padding: 8px;
-        selection-background-color: {COLORS["primary"]};
-        selection-color: white;
-    }}
-
-    QTableWidget {{
-        background-color: {COLORS["surface"]};
-        border: 1px solid {COLORS["border"]};
-        border-radius: 6px;
-        gridline-color: {COLORS["border"]};
-    }}
-
-    QTableWidget::item {{
-        padding: 6px 8px;
-    }}
-
-    QTableWidget::item:selected {{
-        background-color: {COLORS["primary"]};
-        color: white;
-    }}
-
-    QHeaderView::section {{
-        background-color: {COLORS["background"]};
-        color: {COLORS["text"]};
-        font-weight: 600;
-        padding: 8px;
-        border: none;
-        border-bottom: 1px solid {COLORS["border"]};
-    }}
-
-    QSpinBox {{
-        background-color: {COLORS["surface"]};
-        border: 1px solid {COLORS["border"]};
-        border-radius: 6px;
-        padding: 6px 8px;
-    }}
-
-    QSpinBox:hover {{
-        border-color: {COLORS["primary"]};
-    }}
-
-    QSpinBox::up-button, QSpinBox::down-button {{
-        border: none;
-        width: 20px;
-    }}
-
-    QLabel {{
-        background-color: transparent;
-    }}
-
-    QScrollBar:vertical {{
-        background-color: {COLORS["background"]};
-        width: 12px;
-        border-radius: 6px;
-    }}
-
-    QScrollBar::handle:vertical {{
-        background-color: {COLORS["border"]};
-        border-radius: 6px;
-        min-height: 30px;
-    }}
-
-    QScrollBar::handle:vertical:hover {{
-        background-color: {COLORS["secondary"]};
-    }}
-
-    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-        height: 0;
-    }}
-
-    QMessageBox {{
-        background-color: {COLORS["surface"]};
-    }}
-
-    QMessageBox QPushButton {{
-        min-width: 80px;
-    }}
-"""
 
 
 class DropZone(QLabel):
@@ -391,307 +154,6 @@ class DropZone(QLabel):
         """Handle click to browse files."""
         del event  # unused
         self.parent_gui._browse_files()
-
-
-class HomeOfficeDeductionDialog(QDialog):
-    """Dialog for calculating home office deduction."""
-
-    def __init__(self, parent: QWidget | None = None, months: int = 12) -> None:
-        super().__init__(parent)
-        self.setWindowTitle("Home Office Deduction Calculator")
-        self.setModal(True)
-        self.setMinimumWidth(400)
-        self.months = months
-        self._calculated_deduction: float = 0.0
-
-        self._create_widgets()
-
-    def _create_widgets(self) -> None:
-        """Create dialog widgets."""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(16)
-
-        # Description
-        desc_label = QLabel(
-            "Calculate your home office deduction based on the percentage of "
-            "your home used for business and your monthly housing expenses."
-        )
-        desc_label.setWordWrap(True)
-        desc_label.setStyleSheet(f"color: {COLORS['text_muted']};")
-        layout.addWidget(desc_label)
-
-        # Form layout for inputs
-        form_group = QGroupBox("Monthly Expenses")
-        form_layout = QFormLayout(form_group)
-        form_layout.setSpacing(16)
-        form_layout.setContentsMargins(16, 20, 16, 16)
-
-        # Office percentage
-        self.percentage_spinbox = QDoubleSpinBox()
-        self.percentage_spinbox.setRange(0, 100)
-        self.percentage_spinbox.setValue(10)
-        self.percentage_spinbox.setSuffix("%")
-        self.percentage_spinbox.setDecimals(1)
-        self.percentage_spinbox.setMinimumHeight(32)
-        self.percentage_spinbox.valueChanged.connect(self._update_calculation)
-        form_layout.addRow("Office Space Percentage:", self.percentage_spinbox)
-
-        # Monthly rent
-        self.rent_spinbox = QDoubleSpinBox()
-        self.rent_spinbox.setRange(0, 99999.99)
-        self.rent_spinbox.setPrefix("$")
-        self.rent_spinbox.setDecimals(2)
-        self.rent_spinbox.setMinimumHeight(32)
-        self.rent_spinbox.valueChanged.connect(self._update_calculation)
-        form_layout.addRow("Monthly Rent:", self.rent_spinbox)
-
-        # Monthly utilities
-        self.utilities_spinbox = QDoubleSpinBox()
-        self.utilities_spinbox.setRange(0, 9999.99)
-        self.utilities_spinbox.setPrefix("$")
-        self.utilities_spinbox.setDecimals(2)
-        self.utilities_spinbox.setMinimumHeight(32)
-        self.utilities_spinbox.valueChanged.connect(self._update_calculation)
-        form_layout.addRow("Monthly Utilities:", self.utilities_spinbox)
-
-        # Monthly insurance
-        self.insurance_spinbox = QDoubleSpinBox()
-        self.insurance_spinbox.setRange(0, 9999.99)
-        self.insurance_spinbox.setPrefix("$")
-        self.insurance_spinbox.setDecimals(2)
-        self.insurance_spinbox.setMinimumHeight(32)
-        self.insurance_spinbox.valueChanged.connect(self._update_calculation)
-        form_layout.addRow("Monthly Insurance:", self.insurance_spinbox)
-
-        layout.addWidget(form_group)
-
-        # Calculation result display
-        self.result_label = QLabel()
-        self.result_label.setStyleSheet(
-            f"font-size: 14px; font-weight: 600; color: {COLORS['primary']}; "
-            "padding: 16px; background-color: #eff6ff; border-radius: 6px;"
-        )
-        self.result_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.result_label.setMinimumHeight(60)
-        layout.addWidget(self.result_label)
-
-        # Buttons
-        button_layout = QHBoxLayout()
-        button_layout.setSpacing(12)
-        button_layout.addStretch()
-
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setObjectName("secondaryButton")
-        cancel_btn.setMinimumWidth(100)
-        cancel_btn.clicked.connect(self.reject)
-        button_layout.addWidget(cancel_btn)
-
-        apply_btn = QPushButton("Apply Deduction")
-        apply_btn.setObjectName("successButton")
-        apply_btn.setMinimumWidth(120)
-        apply_btn.clicked.connect(self.accept)
-        button_layout.addWidget(apply_btn)
-
-        layout.addLayout(button_layout)
-
-        self._update_calculation()
-
-    def _update_calculation(self) -> None:
-        """Update the calculated deduction based on current inputs."""
-        percentage = self.percentage_spinbox.value() / 100
-        monthly_total = (
-            self.rent_spinbox.value()
-            + self.utilities_spinbox.value()
-            + self.insurance_spinbox.value()
-        )
-        monthly_deduction = monthly_total * percentage
-        self._calculated_deduction = monthly_deduction * self.months
-
-        self.result_label.setText(
-            f"Monthly Deduction: ${monthly_deduction:,.2f}\n"
-            f"Period Deduction ({self.months} mo): ${self._calculated_deduction:,.2f}"
-        )
-
-    def get_deduction(self) -> float:
-        """Return the calculated deduction amount."""
-        return self._calculated_deduction
-
-
-class CarDeductionDialog(QDialog):
-    """Dialog for calculating car/vehicle deduction."""
-
-    STANDARD_MILEAGE_RATE = 0.70  # 70 cents per mile for 2024
-
-    def __init__(self, parent: QWidget | None = None, months: int = 12) -> None:
-        super().__init__(parent)
-        self.setWindowTitle("Car Deduction Calculator")
-        self.setModal(True)
-        self.setMinimumWidth(450)
-        self.months = months
-        self._calculated_deduction: float = 0.0
-
-        self._create_widgets()
-
-    def _create_widgets(self) -> None:
-        """Create dialog widgets."""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(16)
-
-        # Description
-        desc_label = QLabel(
-            "Choose a deduction method: Standard Mileage Rate "
-            f"(${self.STANDARD_MILEAGE_RATE:.2f}/mile) or Actual Expenses "
-            "(business use percentage of car cost)."
-        )
-        desc_label.setWordWrap(True)
-        desc_label.setStyleSheet(f"color: {COLORS['text_muted']};")
-        layout.addWidget(desc_label)
-
-        # Method selection with radio buttons
-        self.method_group = QButtonGroup(self)
-
-        # Standard mileage option
-        self.standard_group = QGroupBox()
-        standard_header = QVBoxLayout(self.standard_group)
-        standard_header.setContentsMargins(16, 16, 16, 16)
-        standard_header.setSpacing(16)
-
-        self.standard_radio = QRadioButton("Standard Mileage Rate")
-        self.standard_radio.setChecked(True)
-        self.standard_radio.setStyleSheet("font-weight: 600;")
-        self.method_group.addButton(self.standard_radio, 0)
-        standard_header.addWidget(self.standard_radio)
-
-        standard_form = QFormLayout()
-        standard_form.setSpacing(12)
-        self.business_miles_spinbox = QDoubleSpinBox()
-        self.business_miles_spinbox.setRange(0, 999999)
-        self.business_miles_spinbox.setSuffix(" miles")
-        self.business_miles_spinbox.setDecimals(0)
-        self.business_miles_spinbox.setMinimumHeight(32)
-        self.business_miles_spinbox.valueChanged.connect(self._update_calculation)
-        standard_form.addRow("Business Miles Driven:", self.business_miles_spinbox)
-        standard_header.addLayout(standard_form)
-
-        layout.addWidget(self.standard_group)
-
-        # Actual expense option
-        self.actual_group = QGroupBox()
-        actual_header = QVBoxLayout(self.actual_group)
-        actual_header.setContentsMargins(16, 16, 16, 16)
-        actual_header.setSpacing(16)
-
-        self.actual_radio = QRadioButton("Actual Expenses")
-        self.actual_radio.setStyleSheet("font-weight: 600;")
-        self.method_group.addButton(self.actual_radio, 1)
-        actual_header.addWidget(self.actual_radio)
-
-        actual_form = QFormLayout()
-        actual_form.setSpacing(12)
-
-        self.total_miles_spinbox = QDoubleSpinBox()
-        self.total_miles_spinbox.setRange(0, 999999)
-        self.total_miles_spinbox.setSuffix(" miles")
-        self.total_miles_spinbox.setDecimals(0)
-        self.total_miles_spinbox.setMinimumHeight(32)
-        self.total_miles_spinbox.valueChanged.connect(self._update_calculation)
-        actual_form.addRow("Total Miles Driven:", self.total_miles_spinbox)
-
-        self.actual_business_miles_spinbox = QDoubleSpinBox()
-        self.actual_business_miles_spinbox.setRange(0, 999999)
-        self.actual_business_miles_spinbox.setSuffix(" miles")
-        self.actual_business_miles_spinbox.setDecimals(0)
-        self.actual_business_miles_spinbox.setMinimumHeight(32)
-        self.actual_business_miles_spinbox.valueChanged.connect(self._update_calculation)
-        actual_form.addRow("Business Miles Driven:", self.actual_business_miles_spinbox)
-
-        self.car_cost_spinbox = QDoubleSpinBox()
-        self.car_cost_spinbox.setRange(0, 999999.99)
-        self.car_cost_spinbox.setPrefix("$")
-        self.car_cost_spinbox.setDecimals(2)
-        self.car_cost_spinbox.setMinimumHeight(32)
-        self.car_cost_spinbox.valueChanged.connect(self._update_calculation)
-        actual_form.addRow("Cost of Car:", self.car_cost_spinbox)
-
-        actual_header.addLayout(actual_form)
-        layout.addWidget(self.actual_group)
-
-        # Connect radio buttons
-        self.standard_radio.toggled.connect(self._on_method_changed)
-        self.actual_radio.toggled.connect(self._on_method_changed)
-
-        # Calculation result display
-        self.result_label = QLabel()
-        self.result_label.setStyleSheet(
-            f"font-size: 14px; font-weight: 600; color: {COLORS['primary']}; "
-            "padding: 16px; background-color: #eff6ff; border-radius: 6px;"
-        )
-        self.result_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.result_label.setMinimumHeight(60)
-        layout.addWidget(self.result_label)
-
-        # Buttons
-        button_layout = QHBoxLayout()
-        button_layout.setSpacing(12)
-        button_layout.addStretch()
-
-        cancel_btn = QPushButton("Cancel")
-        cancel_btn.setObjectName("secondaryButton")
-        cancel_btn.setMinimumWidth(100)
-        cancel_btn.clicked.connect(self.reject)
-        button_layout.addWidget(cancel_btn)
-
-        apply_btn = QPushButton("Apply Deduction")
-        apply_btn.setObjectName("successButton")
-        apply_btn.setMinimumWidth(120)
-        apply_btn.clicked.connect(self.accept)
-        button_layout.addWidget(apply_btn)
-
-        layout.addLayout(button_layout)
-
-        self._on_method_changed()
-        self._update_calculation()
-
-    def _on_method_changed(self) -> None:
-        """Handle method selection change - enable/disable input groups."""
-        is_standard = self.standard_radio.isChecked()
-        self.business_miles_spinbox.setEnabled(is_standard)
-        self.total_miles_spinbox.setEnabled(not is_standard)
-        self.actual_business_miles_spinbox.setEnabled(not is_standard)
-        self.car_cost_spinbox.setEnabled(not is_standard)
-        self._update_calculation()
-
-    def _update_calculation(self) -> None:
-        """Update the calculated deduction based on current inputs."""
-        if self.standard_radio.isChecked():
-            business_miles = self.business_miles_spinbox.value()
-            self._calculated_deduction = business_miles * self.STANDARD_MILEAGE_RATE
-            self.result_label.setText(
-                f"{business_miles:,.0f} miles * ${self.STANDARD_MILEAGE_RATE:.2f}/mile\n"
-                f"Deduction: ${self._calculated_deduction:,.2f}"
-            )
-        else:
-            total_miles = self.total_miles_spinbox.value()
-            business_miles = self.actual_business_miles_spinbox.value()
-            car_cost = self.car_cost_spinbox.value()
-
-            if total_miles > 0:
-                business_percentage = business_miles / total_miles
-                self._calculated_deduction = business_percentage * car_cost
-                self.result_label.setText(
-                    f"Business Use: {business_percentage * 100:.1f}% "
-                    f"({business_miles:,.0f} / {total_miles:,.0f} miles)\n"
-                    f"Deduction: ${self._calculated_deduction:,.2f}"
-                )
-            else:
-                self._calculated_deduction = 0.0
-                self.result_label.setText("Enter total miles to calculate")
-
-    def get_deduction(self) -> float:
-        """Return the calculated deduction amount."""
-        return self._calculated_deduction
 
 
 class TaximateGUI(QWidget):
@@ -1051,115 +513,51 @@ class TaximateGUI(QWidget):
 
         months = self.months_spinbox.value()
 
-        summary = self.calculator.generate_summary(self.df, months)
-        period: TaxResults = summary["period_taxes"]
-        annual: TaxResults = summary["annual_taxes"]
+        summary: SummaryResult = self.calculator.generate_summary(self.df, months)
+        period_rows = summary.period_taxes.display_rows()
+        annual_rows = summary.annual_taxes.display_rows()
 
         # Update header labels with months
         self.results_table.setHorizontalHeaderLabels(
             ["", f"Period ({months} mo)", "Annual (12 mo)"]
         )
 
-        # Build rows data: (label, period_value, annual_value, is_section_header, is_highlight)
-        rows: list[tuple[str, float | None, float | None, bool, bool]] = [
-            # Income section
-            ("INCOME", None, None, True, False),
-            (
-                "Freelance (Tax Already Paid)",
-                period.all_tax_applied,
-                annual.all_tax_applied,
-                False,
-                False,
-            ),
-            (
-                "Revenue (Sales Tax Bundled)",
-                period.sales_tax_bundled,
-                annual.sales_tax_bundled,
-                False,
-                False,
-            ),
-            (
-                "Revenue (Sales Tax Applied)",
-                period.sales_tax_applied,
-                annual.sales_tax_applied,
-                False,
-                False,
-            ),
-            ("Business Expenses", -period.expenses, -annual.expenses, False, False),
-            ("Deductions", -period.deductions, -annual.deductions, False, False),
-            # Profit section
-            ("PROFIT", None, None, True, False),
-            ("Gross Revenue", period.gross_revenue, annual.gross_revenue, False, False),
-            ("Business Profit", period.business_profit, annual.business_profit, False, False),
-            ("Total Profit", period.profit, annual.profit, False, False),
-            ("Sales Taxable Income", period.sales_taxable, annual.sales_taxable, False, False),
-            ("Taxable Income", period.taxable_income, annual.taxable_income, False, False),
-            # Taxes section
-            ("TAXES", None, None, True, False),
-            (
-                f"Sales Tax ({period.sales_tax_rate * 100:.2f}%)",
-                period.sales_tax,
-                annual.sales_tax,
-                False,
-                False,
-            ),
-            (
-                "Self-Employment Tax",
-                period.sole_proprietor_tax,
-                annual.sole_proprietor_tax,
-                False,
-                False,
-            ),
-            (
-                "Federal Income Tax",
-                period.federal_income_tax,
-                annual.federal_income_tax,
-                False,
-                False,
-            ),
-            ("State Income Tax", period.state_income_tax, annual.state_income_tax, False, False),
-            ("Total Income Tax", period.total_income_tax, annual.total_income_tax, False, False),
-            ("Total Tax", period.total_tax, annual.total_tax, False, False),
-            # Summary section
-            ("SUMMARY", None, None, True, False),
-            ("TAKE HOME", period.take_home, annual.take_home, False, True),
-        ]
+        self.results_table.setRowCount(len(period_rows))
 
-        self.results_table.setRowCount(len(rows))
-
-        for row_idx, (label, period_val, annual_val, is_header, is_highlight) in enumerate(rows):
+        for row_idx, (p_row, a_row) in enumerate(zip(period_rows, annual_rows, strict=True)):
             # Label column
-            label_item = QTableWidgetItem(label)
-            if is_header:
+            label_item = QTableWidgetItem(p_row.label)
+            if p_row.is_section_header:
                 label_item.setBackground(self.results_table.palette().alternateBase())
                 font = label_item.font()
                 font.setBold(True)
                 label_item.setFont(font)
-            elif is_highlight:
+            elif p_row.bold:
                 font = label_item.font()
                 font.setBold(True)
                 label_item.setFont(font)
             self.results_table.setItem(row_idx, 0, label_item)
 
-            # Period column
-            if period_val is not None:
-                period_item = QTableWidgetItem(f"${period_val:,.2f}")
+            if not p_row.is_section_header:
+                # Period column
+                p_val = -p_row.value if p_row.negate else p_row.value
+                period_item = QTableWidgetItem(f"${p_val:,.2f}")
                 period_item.setTextAlignment(
                     Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
                 )
-                if is_highlight:
+                if p_row.bold:
                     font = period_item.font()
                     font.setBold(True)
                     period_item.setFont(font)
                 self.results_table.setItem(row_idx, 1, period_item)
 
-            # Annual column
-            if annual_val is not None:
-                annual_item = QTableWidgetItem(f"${annual_val:,.2f}")
+                # Annual column
+                a_val = -a_row.value if a_row.negate else a_row.value
+                annual_item = QTableWidgetItem(f"${a_val:,.2f}")
                 annual_item.setTextAlignment(
                     Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
                 )
-                if is_highlight:
+                if a_row.bold:
                     font = annual_item.font()
                     font.setBold(True)
                     annual_item.setFont(font)

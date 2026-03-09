@@ -41,6 +41,18 @@ CATEGORY_REVENUE_SALES_TAX_APPLIED = "Revenue (Sales Tax Applied)"
 CATEGORY_EXPENSES = "Business Expenses"
 
 
+@dataclass(frozen=True)
+class DisplayRow:
+    """A single row for the tax summary display table."""
+
+    label: str
+    value: float
+    section: str  # "INCOME", "PROFIT", "TAXES", "SUMMARY"
+    bold: bool = False
+    negate: bool = False  # display value negated (expenses, deductions)
+    is_section_header: bool = False
+
+
 def _get_base_path() -> Path:
     """Get the base path for resources, handling PyInstaller bundles."""
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
@@ -158,6 +170,43 @@ class TaxResults:
     def as_dict(self) -> dict[str, float]:
         """Convert results to a dictionary."""
         return self.__dict__
+
+    def display_rows(self) -> list[DisplayRow]:
+        """Return ordered display rows for the tax summary table."""
+        return [
+            DisplayRow("INCOME", 0.0, "INCOME", is_section_header=True),
+            DisplayRow(CATEGORY_FREELANCE, self.all_tax_applied, "INCOME"),
+            DisplayRow(CATEGORY_REVENUE_SALES_TAX_BUNDLED, self.sales_tax_bundled, "INCOME"),
+            DisplayRow(CATEGORY_REVENUE_SALES_TAX_APPLIED, self.sales_tax_applied, "INCOME"),
+            DisplayRow(CATEGORY_EXPENSES, self.expenses, "INCOME", negate=True),
+            DisplayRow("Deductions", self.deductions, "INCOME", negate=True),
+            DisplayRow("PROFIT", 0.0, "PROFIT", is_section_header=True),
+            DisplayRow("Gross Revenue", self.gross_revenue, "PROFIT"),
+            DisplayRow("Business Profit", self.business_profit, "PROFIT"),
+            DisplayRow("Total Profit", self.profit, "PROFIT"),
+            DisplayRow("Sales Taxable Income", self.sales_taxable, "PROFIT"),
+            DisplayRow("Taxable Income", self.taxable_income, "PROFIT"),
+            DisplayRow("TAXES", 0.0, "TAXES", is_section_header=True),
+            DisplayRow(f"Sales Tax ({self.sales_tax_rate:.2%})", self.sales_tax, "TAXES"),
+            DisplayRow("Self-Employment Tax", self.sole_proprietor_tax, "TAXES"),
+            DisplayRow("Federal Income Tax", self.federal_income_tax, "TAXES"),
+            DisplayRow("State Income Tax", self.state_income_tax, "TAXES"),
+            DisplayRow("Total Income Tax", self.total_income_tax, "TAXES"),
+            DisplayRow("Total Tax", self.total_tax, "TAXES"),
+            DisplayRow("SUMMARY", 0.0, "SUMMARY", is_section_header=True),
+            DisplayRow("TAKE HOME", self.take_home, "SUMMARY", bold=True),
+        ]
+
+
+@dataclass(frozen=True, slots=True)
+class SummaryResult:
+    """Result of generate_summary(), containing period and annual tax calculations."""
+
+    tax_inputs: TaxInputs
+    annual_inputs: TaxInputs
+    period_taxes: TaxResults
+    annual_taxes: TaxResults
+    uncategorized_count: int
 
 
 class TaxRates:
@@ -456,9 +505,7 @@ class TaxCalculator:
             deductions=self.manual_deductions,
         )
 
-    def generate_summary(
-        self, df: pd.DataFrame, months: int = 12
-    ) -> dict[str, TaxInputs | TaxResults | float]:
+    def generate_summary(self, df: pd.DataFrame, months: int = 12) -> SummaryResult:
         """Generate a complete tax summary with optional annualization."""
         # Collect all the data needed for calculation
         tax_inputs = self.extract_period_totals(df)
@@ -472,10 +519,10 @@ class TaxCalculator:
 
         uncategorized_count = len(self.get_uncategorized_items(df))
 
-        return {
-            "tax_inputs": tax_inputs,
-            "annual_inputs": annual_inputs,
-            "period_taxes": period_taxes,
-            "annual_taxes": annual_taxes,
-            "uncategorized_count": float(uncategorized_count),
-        }
+        return SummaryResult(
+            tax_inputs=tax_inputs,
+            annual_inputs=annual_inputs,
+            period_taxes=period_taxes,
+            annual_taxes=annual_taxes,
+            uncategorized_count=uncategorized_count,
+        )
