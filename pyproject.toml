@@ -1,3 +1,10 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/taximate"]
+
 [project]
 name = "taximate"
 version = "0.2.1"
@@ -15,4 +22,9 @@ dev = [
     "mypy>=1.10.0",
     "pandas-stubs>=2.0.0",
     "pyinstaller>=6.0.0",
+    "pytest>=8.0.0",
+    "pytest-qt>=4.4.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

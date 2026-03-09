@@ -70,8 +70,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .data_loader import get_unique_values, load_csvs_from_paths
-from .tax_calculator import TaxCalculator, TaxResults
+from taximate.core.data_loader import get_unique_values, load_csvs_from_paths
+from taximate.core.tax_calculator import TaxCalculator, TaxResults
 
 if TYPE_CHECKING:
     from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDropEvent, QMouseEvent

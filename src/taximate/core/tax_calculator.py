@@ -47,7 +47,7 @@ def _get_base_path() -> Path:
         # Running as PyInstaller bundle
         return Path(sys._MEIPASS)
     # Running as normal Python script
-    return Path(__file__).parent.parent
+    return Path(__file__).parent.parent.parent.parent
 
 
 # Default tax rates directory

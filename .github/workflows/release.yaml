@@ -9,13 +9,16 @@ permissions:
   contents: write
 
 jobs:
+  test:
+    uses: ./.github/workflows/_run-tests.yml
+
   build:
+    needs: test
     uses: ./.github/workflows/_build-artifacts.yml
 
   publish:
     needs: build
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/download-artifact@v4
         with:

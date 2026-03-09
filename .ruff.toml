@@ -19,7 +19,7 @@ ignore = [
 ]
 
 [lint.isort]
-known-first-party = ["src"]
+known-first-party = ["taximate"]
 
 [format]
 quote-style = "double"

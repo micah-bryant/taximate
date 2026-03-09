@@ -15,7 +15,7 @@ Usage:
     make run
 """
 
-from src.gui import run_app
+from taximate.gui import run_app
 
 
 def main() -> None:

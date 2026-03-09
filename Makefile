@@ -1,4 +1,4 @@
-.PHONY: install run format check clean build-mac build-windows clean-build
+.PHONY: install run format check test clean build-mac build-windows clean-build
 
 install:
 	uv sync
@@ -15,8 +15,11 @@ check:
 	uv run ruff format --check && \
 	uv run mypy --config-file .mypy.ini --cache-dir .mypy_cache .
 
+test:
+	@QT_QPA_PLATFORM=offscreen uv run pytest
+
 clean:
-	rm -rf .venv __pycache__ src/__pycache__ .mypy_cache
+	find . -type d -name __pycache__ -exec rm -rf {} + ; rm -rf .venv .mypy_cache
 
 # PyInstaller build targets
 PYINSTALLER_EXCLUDES = --exclude-module matplotlib --exclude-module scipy --exclude-module PIL --exclude-module Pillow --exclude-module IPython --exclude-module notebook --exclude-module pytest
