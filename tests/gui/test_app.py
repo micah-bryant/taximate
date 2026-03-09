@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import pandas as pd
+
+from taximate.core.tax_calculator import CATEGORY_REVENUE_SALES_TAX_APPLIED
 from taximate.gui.app import CarDeductionDialog, DropZone, HomeOfficeDeductionDialog, TaximateGUI
 
 if TYPE_CHECKING:
@@ -82,3 +85,21 @@ def test_drop_zone_instantiates(qtbot: QtBot) -> None:
     drop_zone = DropZone(parent=window)
     qtbot.addWidget(drop_zone)
     assert drop_zone is not None
+
+
+def test_calculate_taxes_populates_table(qtbot: QtBot) -> None:
+    """_calculate_taxes() populates the results table with rows."""
+    window = TaximateGUI()
+    qtbot.addWidget(window)
+
+    # Inject a minimal DataFrame
+    df = pd.DataFrame({"Item": ["consulting", "supplies"], "Amount": [5000.0, -200.0]})
+    window.df = df
+
+    # Assign items to categories
+    window.calculator.assign_item_to_category("consulting", CATEGORY_REVENUE_SALES_TAX_APPLIED)
+    window.calculator.assign_item_to_category("supplies", CATEGORY_REVENUE_SALES_TAX_APPLIED)
+
+    window._calculate_taxes()
+
+    assert window.results_table.rowCount() > 0

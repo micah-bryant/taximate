@@ -71,7 +71,13 @@ from PySide6.QtWidgets import (
 )
 
 from taximate.core.data_loader import get_unique_values, load_csvs_from_paths
-from taximate.core.tax_calculator import TaxCalculator, TaxResults
+from taximate.core.deductions import (
+    STANDARD_MILEAGE_RATE,
+    car_actual_expense_deduction,
+    car_standard_mileage_deduction,
+    home_office_deduction,
+)
+from taximate.core.tax_calculator import SummaryResult, TaxCalculator
 
 if TYPE_CHECKING:
     from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDropEvent, QMouseEvent
@@ -499,14 +505,14 @@ class HomeOfficeDeductionDialog(QDialog):
 
     def _update_calculation(self) -> None:
         """Update the calculated deduction based on current inputs."""
-        percentage = self.percentage_spinbox.value() / 100
-        monthly_total = (
-            self.rent_spinbox.value()
-            + self.utilities_spinbox.value()
-            + self.insurance_spinbox.value()
+        office_pct = self.percentage_spinbox.value() / 100
+        rent = self.rent_spinbox.value()
+        utilities = self.utilities_spinbox.value()
+        insurance = self.insurance_spinbox.value()
+        monthly_deduction = (rent + utilities + insurance) * office_pct
+        self._calculated_deduction = home_office_deduction(
+            rent, utilities, insurance, office_pct, self.months
         )
-        monthly_deduction = monthly_total * percentage
-        self._calculated_deduction = monthly_deduction * self.months
 
         self.result_label.setText(
             f"Monthly Deduction: ${monthly_deduction:,.2f}\n"
@@ -520,8 +526,6 @@ class HomeOfficeDeductionDialog(QDialog):
 
 class CarDeductionDialog(QDialog):
     """Dialog for calculating car/vehicle deduction."""
-
-    STANDARD_MILEAGE_RATE = 0.70  # 70 cents per mile for 2024
 
     def __init__(self, parent: QWidget | None = None, months: int = 12) -> None:
         super().__init__(parent)
@@ -542,7 +546,7 @@ class CarDeductionDialog(QDialog):
         # Description
         desc_label = QLabel(
             "Choose a deduction method: Standard Mileage Rate "
-            f"(${self.STANDARD_MILEAGE_RATE:.2f}/mile) or Actual Expenses "
+            f"(${STANDARD_MILEAGE_RATE:.2f}/mile) or Actual Expenses "
             "(business use percentage of car cost)."
         )
         desc_label.setWordWrap(True)
@@ -667,26 +671,27 @@ class CarDeductionDialog(QDialog):
         """Update the calculated deduction based on current inputs."""
         if self.standard_radio.isChecked():
             business_miles = self.business_miles_spinbox.value()
-            self._calculated_deduction = business_miles * self.STANDARD_MILEAGE_RATE
+            self._calculated_deduction = car_standard_mileage_deduction(business_miles)
             self.result_label.setText(
-                f"{business_miles:,.0f} miles * ${self.STANDARD_MILEAGE_RATE:.2f}/mile\n"
+                f"{business_miles:,.0f} miles * ${STANDARD_MILEAGE_RATE:.2f}/mile\n"
                 f"Deduction: ${self._calculated_deduction:,.2f}"
             )
         else:
             total_miles = self.total_miles_spinbox.value()
             business_miles = self.actual_business_miles_spinbox.value()
             car_cost = self.car_cost_spinbox.value()
+            self._calculated_deduction = car_actual_expense_deduction(
+                business_miles, total_miles, car_cost
+            )
 
             if total_miles > 0:
                 business_percentage = business_miles / total_miles
-                self._calculated_deduction = business_percentage * car_cost
                 self.result_label.setText(
                     f"Business Use: {business_percentage * 100:.1f}% "
                     f"({business_miles:,.0f} / {total_miles:,.0f} miles)\n"
                     f"Deduction: ${self._calculated_deduction:,.2f}"
                 )
             else:
-                self._calculated_deduction = 0.0
                 self.result_label.setText("Enter total miles to calculate")
 
     def get_deduction(self) -> float:
@@ -1051,115 +1056,51 @@ class TaximateGUI(QWidget):
 
         months = self.months_spinbox.value()
 
-        summary = self.calculator.generate_summary(self.df, months)
-        period: TaxResults = summary["period_taxes"]
-        annual: TaxResults = summary["annual_taxes"]
+        summary: SummaryResult = self.calculator.generate_summary(self.df, months)
+        period_rows = summary.period_taxes.display_rows()
+        annual_rows = summary.annual_taxes.display_rows()
 
         # Update header labels with months
         self.results_table.setHorizontalHeaderLabels(
             ["", f"Period ({months} mo)", "Annual (12 mo)"]
         )
 
-        # Build rows data: (label, period_value, annual_value, is_section_header, is_highlight)
-        rows: list[tuple[str, float | None, float | None, bool, bool]] = [
-            # Income section
-            ("INCOME", None, None, True, False),
-            (
-                "Freelance (Tax Already Paid)",
-                period.all_tax_applied,
-                annual.all_tax_applied,
-                False,
-                False,
-            ),
-            (
-                "Revenue (Sales Tax Bundled)",
-                period.sales_tax_bundled,
-                annual.sales_tax_bundled,
-                False,
-                False,
-            ),
-            (
-                "Revenue (Sales Tax Applied)",
-                period.sales_tax_applied,
-                annual.sales_tax_applied,
-                False,
-                False,
-            ),
-            ("Business Expenses", -period.expenses, -annual.expenses, False, False),
-            ("Deductions", -period.deductions, -annual.deductions, False, False),
-            # Profit section
-            ("PROFIT", None, None, True, False),
-            ("Gross Revenue", period.gross_revenue, annual.gross_revenue, False, False),
-            ("Business Profit", period.business_profit, annual.business_profit, False, False),
-            ("Total Profit", period.profit, annual.profit, False, False),
-            ("Sales Taxable Income", period.sales_taxable, annual.sales_taxable, False, False),
-            ("Taxable Income", period.taxable_income, annual.taxable_income, False, False),
-            # Taxes section
-            ("TAXES", None, None, True, False),
-            (
-                f"Sales Tax ({period.sales_tax_rate * 100:.2f}%)",
-                period.sales_tax,
-                annual.sales_tax,
-                False,
-                False,
-            ),
-            (
-                "Self-Employment Tax",
-                period.sole_proprietor_tax,
-                annual.sole_proprietor_tax,
-                False,
-                False,
-            ),
-            (
-                "Federal Income Tax",
-                period.federal_income_tax,
-                annual.federal_income_tax,
-                False,
-                False,
-            ),
-            ("State Income Tax", period.state_income_tax, annual.state_income_tax, False, False),
-            ("Total Income Tax", period.total_income_tax, annual.total_income_tax, False, False),
-            ("Total Tax", period.total_tax, annual.total_tax, False, False),
-            # Summary section
-            ("SUMMARY", None, None, True, False),
-            ("TAKE HOME", period.take_home, annual.take_home, False, True),
-        ]
+        self.results_table.setRowCount(len(period_rows))
 
-        self.results_table.setRowCount(len(rows))
-
-        for row_idx, (label, period_val, annual_val, is_header, is_highlight) in enumerate(rows):
+        for row_idx, (p_row, a_row) in enumerate(zip(period_rows, annual_rows, strict=True)):
             # Label column
-            label_item = QTableWidgetItem(label)
-            if is_header:
+            label_item = QTableWidgetItem(p_row.label)
+            if p_row.is_section_header:
                 label_item.setBackground(self.results_table.palette().alternateBase())
                 font = label_item.font()
                 font.setBold(True)
                 label_item.setFont(font)
-            elif is_highlight:
+            elif p_row.bold:
                 font = label_item.font()
                 font.setBold(True)
                 label_item.setFont(font)
             self.results_table.setItem(row_idx, 0, label_item)
 
-            # Period column
-            if period_val is not None:
-                period_item = QTableWidgetItem(f"${period_val:,.2f}")
+            if not p_row.is_section_header:
+                # Period column
+                p_val = -p_row.value if p_row.negate else p_row.value
+                period_item = QTableWidgetItem(f"${p_val:,.2f}")
                 period_item.setTextAlignment(
                     Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
                 )
-                if is_highlight:
+                if p_row.bold:
                     font = period_item.font()
                     font.setBold(True)
                     period_item.setFont(font)
                 self.results_table.setItem(row_idx, 1, period_item)
 
-            # Annual column
-            if annual_val is not None:
-                annual_item = QTableWidgetItem(f"${annual_val:,.2f}")
+                # Annual column
+                a_val = -a_row.value if a_row.negate else a_row.value
+                annual_item = QTableWidgetItem(f"${a_val:,.2f}")
                 annual_item.setTextAlignment(
                     Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
                 )
-                if is_highlight:
+                if a_row.bold:
                     font = annual_item.font()
                     font.setBold(True)
                     annual_item.setFont(font)
