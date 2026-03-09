@@ -8,7 +8,10 @@ on:
     branches:
       - main
 
-
 jobs:
+  test:
+    uses: ./.github/workflows/_run-tests.yml
+
   build:
+    needs: test
     uses: ./.github/workflows/_build-artifacts.yml
