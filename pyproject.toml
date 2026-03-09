@@ -7,7 +7,7 @@ packages = ["src/taximate"]
 
 [project]
 name = "taximate"
-version = "0.2.1"
+version = "0.3.0"
 description = "Import EveryDollar transactions and calculate tax deductions"
 requires-python = ">=3.12"
 dependencies = [
