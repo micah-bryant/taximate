@@ -1,0 +1,59 @@
+name: Deploy taximate web app
+
+# Release-driven: cutting a v* tag builds the wheel + the React app and
+# publishes them to this repo's own GitHub Pages (micah-bryant.github.io/taximate/).
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Parity gate (Python tests, incl. golden fixture)
+        run: |
+          uv sync --group dev
+          uv run pytest -q
+
+      - name: Build the pure-Python wheel
+        run: uv build --wheel
+
+      - name: Stage wheel + manifest into the web public/ dir (rates ship in the wheel)
+        run: |
+          cp dist/*.whl src/js/public/
+          WHEEL=$(basename "$(ls dist/*.whl)")
+          VERSION=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
+          printf '{"wheel":"%s","version":"%s"}\n' "$WHEEL" "$VERSION" > src/js/public/manifest.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build the web app (Vite copies public/ into dist/)
+        run: |
+          npm --prefix src/js ci
+          npm --prefix src/js run build
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: src/js/dist
+
+      - id: deploy
+        uses: actions/deploy-pages@v4

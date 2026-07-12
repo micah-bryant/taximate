@@ -28,11 +28,11 @@ Classes:
 
 from __future__ import annotations
 
-import sys
+import csv
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import pandas as pd
+from taximate.core.data_loader import TransactionRow
 
 # Income category type constants
 CATEGORY_FREELANCE = "Freelance (Tax Already Paid)"
@@ -53,17 +53,23 @@ class DisplayRow:
     is_section_header: bool = False
 
 
-def _get_base_path() -> Path:
-    """Get the base path for resources, handling PyInstaller bundles."""
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        # Running as PyInstaller bundle
-        return Path(sys._MEIPASS)
-    # Running as normal Python script
-    return Path(__file__).parent.parent.parent.parent
+# tax_rates/ ships inside the package (src/python/taximate/tax_rates/), so the
+# rates are found wherever taximate is installed — including in the browser wheel.
+TAX_RATES_DIR = Path(__file__).resolve().parent.parent / "tax_rates"
 
 
-# Default tax rates directory
-TAX_RATES_DIR = _get_base_path() / "tax_rates"
+def _read_rows(csv_path: Path) -> list[dict[str, str]]:
+    """Read a small, trusted rate CSV into a list of ``dict[str, str]`` rows.
+
+    Uses ``csv.reader`` (values are ``str``) rather than ``DictReader`` (whose
+    values are typed ``str | Any``) so the strict type check stays clean.
+    """
+    with csv_path.open(newline="") as f:
+        reader = csv.reader(f)
+        header = next(reader, None)
+        if header is None:
+            return []
+        return [dict(zip(header, record, strict=False)) for record in reader if record]
 
 
 @dataclass
@@ -233,18 +239,16 @@ class TaxRates:
         self._load_sales_tax_rates()
 
     def _load_federal_brackets(self) -> None:
-        """Load federal income tax brackets."""
+        """Load federal income tax brackets (single filers)."""
         csv_path = self.tax_rates_dir / "federal_income_tax_2025.csv"
         if not csv_path.exists():
             return
 
-        df = pd.read_csv(csv_path)
-        # Filter for single filers (default)
-        single_df = df[df["filing_status"] == "single"]
-
         self.federal_brackets = []
-        for _, row in single_df.iterrows():
-            max_income: str = row["max_income"] if pd.notna(row["max_income"]) else None
+        for row in _read_rows(csv_path):
+            if row.get("filing_status") != "single":
+                continue
+            max_income = row.get("max_income", "").strip()
             self.federal_brackets.append(
                 TaxBracket(
                     rate=float(row["rate"]),
@@ -254,18 +258,16 @@ class TaxRates:
             )
 
     def _load_state_brackets(self) -> None:
-        """Load California state income tax brackets."""
+        """Load California state income tax brackets (single filers)."""
         csv_path = self.tax_rates_dir / "california_income_tax_2024.csv"
         if not csv_path.exists():
             return
 
-        df = pd.read_csv(csv_path)
-        # Filter for single filers (default)
-        single_df = df[df["filing_status"] == "single"]
-
         self.state_brackets = []
-        for _, row in single_df.iterrows():
-            max_income: str = row["max_income"] if pd.notna(row["max_income"]) else None
+        for row in _read_rows(csv_path):
+            if row.get("filing_status") != "single":
+                continue
+            max_income = row.get("max_income", "").strip()
             self.state_brackets.append(
                 TaxBracket(
                     rate=float(row["rate"]),
@@ -280,21 +282,21 @@ class TaxRates:
         if not csv_path.exists():
             return
 
-        df = pd.read_csv(csv_path)
-        for _, row in df.iterrows():
-            tax_type = row["tax_type"]
+        for row in _read_rows(csv_path):
+            tax_type = row.get("tax_type", "")
             rate = float(row["rate"])
+            wage_base = row.get("wage_base", "").strip()
 
             if tax_type == "social_security":
                 self.se_social_security_rate = rate
-                if pd.notna(row["wage_base"]):
-                    self.se_wage_base = float(row["wage_base"])
+                if wage_base:
+                    self.se_wage_base = float(wage_base)
             elif tax_type == "medicare":
                 self.se_medicare_rate = rate
             elif tax_type == "additional_medicare":
                 self.se_additional_medicare_rate = rate
-                if pd.notna(row["wage_base"]):
-                    self.se_additional_medicare_threshold = float(row["wage_base"])
+                if wage_base:
+                    self.se_additional_medicare_threshold = float(wage_base)
             elif tax_type == "income_factor":
                 self.se_income_factor = rate
 
@@ -304,11 +306,10 @@ class TaxRates:
         if not csv_path.exists():
             return
 
-        df = pd.read_csv(csv_path)
-        # Use San Diego city rate as default
-        san_diego_row = df[df["jurisdiction"] == "san_diego_city"]
-        if not san_diego_row.empty:
-            self.sales_tax_rate = float(san_diego_row.iloc[0]["rate"])
+        for row in _read_rows(csv_path):
+            if row.get("jurisdiction") == "san_diego_city":
+                self.sales_tax_rate = float(row["rate"])
+                break
 
     def calculate_bracket_tax(self, income: float, brackets: list[TaxBracket]) -> float:
         """Calculate tax using progressive brackets."""
@@ -422,23 +423,21 @@ class TaxCalculator:
                 self.categories[category_name].items.remove(item)
             del self.item_to_category[item]
 
-    def _get_category_total(self, df: pd.DataFrame, category_name: str) -> float:
+    def _get_category_total(self, rows: list[TransactionRow], category_name: str) -> float:
         """Get the sum of amounts for a specific category."""
         if category_name not in self.categories:
             return 0.0
 
-        category = self.categories[category_name]
-        if not category.items:
+        items = set(self.categories[category_name].items)
+        if not items:
             return 0.0
 
-        mask = df["Item"].isin(category.items)
-        return float(df[mask]["Amount"].sum())
+        return sum(row.amount for row in rows if row.item in items)
 
-    def get_uncategorized_items(self, df: pd.DataFrame) -> list[str]:
+    def get_uncategorized_items(self, rows: list[TransactionRow]) -> list[str]:
         """Get list of items that haven't been categorized."""
-        all_items = set(df["Item"].unique())
-        categorized_items = set(self.item_to_category.keys())
-        return sorted(all_items - categorized_items)
+        all_items = {row.item for row in rows}
+        return sorted(all_items - set(self.item_to_category))
 
     def get_category_for_item(self, item: str) -> str | None:
         """Get the category name for an item."""
@@ -496,19 +495,19 @@ class TaxCalculator:
             gross_revenue=gross_revenue,
         )
 
-    def extract_period_totals(self, df: pd.DataFrame) -> TaxInputs:
+    def extract_period_totals(self, rows: list[TransactionRow]) -> TaxInputs:
         return TaxInputs(
-            all_tax_applied=self._get_category_total(df, CATEGORY_FREELANCE),
-            sales_tax_bundled=self._get_category_total(df, CATEGORY_REVENUE_SALES_TAX_BUNDLED),
-            sales_tax_applied=self._get_category_total(df, CATEGORY_REVENUE_SALES_TAX_APPLIED),
-            expenses=abs(self._get_category_total(df, CATEGORY_EXPENSES)),
+            all_tax_applied=self._get_category_total(rows, CATEGORY_FREELANCE),
+            sales_tax_bundled=self._get_category_total(rows, CATEGORY_REVENUE_SALES_TAX_BUNDLED),
+            sales_tax_applied=self._get_category_total(rows, CATEGORY_REVENUE_SALES_TAX_APPLIED),
+            expenses=abs(self._get_category_total(rows, CATEGORY_EXPENSES)),
             deductions=self.manual_deductions,
         )
 
-    def generate_summary(self, df: pd.DataFrame, months: int = 12) -> SummaryResult:
+    def generate_summary(self, rows: list[TransactionRow], months: int = 12) -> SummaryResult:
         """Generate a complete tax summary with optional annualization."""
         # Collect all the data needed for calculation
-        tax_inputs = self.extract_period_totals(df)
+        tax_inputs = self.extract_period_totals(rows)
 
         # project those values for a year
         annual_inputs = tax_inputs.annualized(months)
@@ -517,7 +516,7 @@ class TaxCalculator:
         period_taxes = self.calculate_taxes(tax_inputs)
         annual_taxes = self.calculate_taxes(annual_inputs)
 
-        uncategorized_count = len(self.get_uncategorized_items(df))
+        uncategorized_count = len(self.get_uncategorized_items(rows))
 
         return SummaryResult(
             tax_inputs=tax_inputs,

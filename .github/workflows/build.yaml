@@ -1,4 +1,4 @@
-name: Build executables
+name: CI
 
 on:
   push:
@@ -11,7 +11,3 @@ on:
 jobs:
   test:
     uses: ./.github/workflows/_run-tests.yml
-
-  build:
-    needs: test
-    uses: ./.github/workflows/_build-artifacts.yml

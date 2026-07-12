@@ -218,24 +218,24 @@ def test_tax_calculator_calculate_taxes_expenses_reduce_tax(tax_rates_dir: Path)
     assert high_result.total_income_tax < base_result.total_income_tax
 
 
-def test_tax_calculator_generate_summary_returns_summary_result(tax_rates_dir: Path) -> None:
+def test_tax_calculator_generate_summary_returns_summary_result(
+    tax_rates_dir: Path, data_dir: Path
+) -> None:
     """generate_summary returns a SummaryResult with correct typed attributes."""
 
-    from taximate.core.data_loader import load_csvs_from_paths
+    from taximate.core.data_loader import load_csvs_from_paths, unique_items
     from taximate.core.tax_calculator import CATEGORY_REVENUE_SALES_TAX_APPLIED
 
-    data_dir = tax_rates_dir.parent / "data"
     csv_files = list(data_dir.glob("*.csv"))
     assert csv_files
 
-    df = load_csvs_from_paths(csv_files)
+    rows = load_csvs_from_paths(csv_files)
     calc = TaxCalculator(tax_rates_dir)
 
-    items = df["Item"].unique()[:2].tolist()
-    for item in items:
+    for item in unique_items(rows)[:2]:
         calc.assign_item_to_category(item, CATEGORY_REVENUE_SALES_TAX_APPLIED)
 
-    summary = calc.generate_summary(df, months=12)
+    summary = calc.generate_summary(rows, months=12)
     assert isinstance(summary, SummaryResult)
     assert isinstance(summary.tax_inputs, TaxInputs)
     assert isinstance(summary.annual_inputs, TaxInputs)
