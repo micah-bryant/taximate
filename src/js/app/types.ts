@@ -2,7 +2,7 @@
 // dataclasses in taximate.core by the drift-guard test (see the drift-guard
 // test, which type-checks the golden fixture against these interfaces).
 
-/** One row of the tax summary table — mirrors core `DisplayRow` (snake_case). */
+/** One row of the tax summary table, mirroring core `DisplayRow` (snake_case). */
 export interface DisplayRow {
   label: string
   value: number

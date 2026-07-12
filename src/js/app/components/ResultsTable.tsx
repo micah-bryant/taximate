@@ -9,7 +9,7 @@ import {
 import { formatCurrency } from "@/lib/format"
 import type { ComputeResult } from "@/types"
 
-/** Step 3 (results) — renders the core's `display_rows()` for period + annual. */
+/** Step 3 (results): renders the core's `display_rows()` for period + annual. */
 export function ResultsTable({ result }: { result: ComputeResult }) {
   return (
     <div className="flex flex-col gap-3">

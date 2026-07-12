@@ -8,7 +8,7 @@ interface FileLoaderProps {
   onLoad: (files: [string, string][]) => void
 }
 
-/** Step 1 — drag-drop / browse EveryDollar CSV exports; reads them as text. */
+/** Step 1: drag-drop / browse EveryDollar CSV exports; reads them as text. */
 export function FileLoader({ disabled, onLoad }: FileLoaderProps) {
   const onDrop = useCallback(
     async (accepted: File[]) => {

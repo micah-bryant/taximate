@@ -54,7 +54,7 @@ class DisplayRow:
 
 
 # tax_rates/ ships inside the package (src/python/taximate/tax_rates/), so the
-# rates are found wherever taximate is installed — including in the browser wheel.
+# rates are found wherever taximate is installed, including in the browser wheel.
 TAX_RATES_DIR = Path(__file__).resolve().parent.parent / "tax_rates"
 
 

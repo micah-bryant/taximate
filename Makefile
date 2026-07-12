@@ -10,7 +10,7 @@ format:
 check:
 	@uv run ruff check && \
 	uv run ruff format --check && \
-	uv run mypy --config-file .mypy.ini --cache-dir .mypy_cache src/python
+	uv run mypy src/python
 
 test:
 	@uv run pytest

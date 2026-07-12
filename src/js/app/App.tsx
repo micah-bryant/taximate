@@ -130,9 +130,18 @@ export default function App() {
         <h1 className="text-2xl font-bold">Taximate</h1>
         <p className="text-sm text-muted-foreground">
           Estimate self-employment taxes from your EveryDollar exports. Everything runs in your
-          browser — your CSVs never leave your device.
+          browser; your CSVs never leave your device.
         </p>
       </header>
+
+      <div
+        role="note"
+        className="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-300"
+      >
+        <strong>Estimates only, not tax advice.</strong> Taximate approximates your
+        self-employment taxes to help you plan. Have a certified tax professional verify every
+        figure before you file.
+      </div>
 
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold text-primary">1 · Load transactions</h2>
@@ -200,12 +209,16 @@ export default function App() {
 
       {result && (
         <section className="flex flex-col gap-3" data-testid="results">
+          <p className="text-xs text-muted-foreground">
+            Estimates, not tax advice. Verify with a certified tax professional before filing.
+          </p>
           <ResultsTable result={result} />
         </section>
       )}
 
       <footer className="mt-4 border-t border-border pt-4 text-xs text-muted-foreground">
-        Taximate {version && `v${version}`} · Informational only — not tax advice.
+        Taximate {version && `v${version}`} · Estimates only, not tax advice. Verify with a
+        certified tax professional before filing.
       </footer>
     </div>
   )
