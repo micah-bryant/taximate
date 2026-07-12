@@ -14,8 +14,10 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# Anchored to the repo root: these are Python build dirs. Unanchored, `lib/`
+# also swallowed the frontend's src/js/app/lib/ (utils.ts, format.ts).
+/lib/
+/lib64/
 parts/
 sdist/
 var/
