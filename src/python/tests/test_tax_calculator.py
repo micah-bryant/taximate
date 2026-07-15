@@ -29,7 +29,7 @@ def test_tax_rates_loads_without_error(tax_rates_dir: Path) -> None:
 
 
 def test_tax_rates_sales_tax_rate(tax_rates_dir: Path) -> None:
-    rates = TaxRates(tax_rates_dir)
+    rates = TaxRates(tax_rates_dir, state="california")
     assert rates.sales_tax_rate == pytest.approx(0.0775)
 
 
@@ -213,7 +213,7 @@ def test_tax_calculator_calculate_taxes_zero_income(tax_rates_dir: Path) -> None
 
 def test_tax_calculator_calculate_taxes_known_inputs(tax_rates_dir: Path) -> None:
     """Provide fixed inputs and verify output fields are consistent."""
-    calc = TaxCalculator(tax_rates_dir)
+    calc = TaxCalculator(tax_rates_dir, state="california")
     inputs = TaxInputs(
         all_tax_applied=5000.0,
         sales_tax_bundled=10770.0,  # ~$10k + bundled sales tax

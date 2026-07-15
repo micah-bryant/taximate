@@ -140,7 +140,7 @@ def test_massachusetts_bracket_golden(tax_rates_dir: Path, income: float, expect
 
 def test_sales_tax_backcalc_golden(tax_rates_dir: Path) -> None:
     """Bundled $10,775 at 7.75% -> $10,000 net + $775.00 tax (10000 * 1.0775 = 10775)."""
-    calc = TaxCalculator(tax_rates_dir)
+    calc = TaxCalculator(tax_rates_dir, state="california")
     results = calc.calculate_taxes(
         TaxInputs(
             all_tax_applied=0.0,
@@ -191,7 +191,7 @@ def test_end_to_end_california_golden(tax_rates_dir: Path) -> None:
         total_income_tax = 11303.64 + 11068.5996 + 2875.4244       = 25,247.664
         take_home        = 80000 - 25247.664                       = 54,752.336
     """
-    calc = TaxCalculator(tax_rates_dir)
+    calc = TaxCalculator(tax_rates_dir, state="california")
     results = calc.calculate_taxes(
         TaxInputs(
             all_tax_applied=0.0,
@@ -227,7 +227,7 @@ def test_end_to_end_california_high_earner_golden(tax_rates_dir: Path) -> None:
         california (2025)= 3201.97 + 206113.775*.093              = 22,370.551075
         take_home        = 300000 - (31605.90+68359.57125+22370.55) = 177,663.977675
     """
-    calc = TaxCalculator(tax_rates_dir)
+    calc = TaxCalculator(tax_rates_dir, state="california")
     results = calc.calculate_taxes(
         TaxInputs(
             all_tax_applied=0.0,
