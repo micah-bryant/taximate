@@ -1,0 +1,4 @@
+rate_type,csv
+federal_brackets,federal_income_tax_2026.csv
+self_employment,self_employment_tax_2026.csv
+sales_tax,sales_tax_2026.csv

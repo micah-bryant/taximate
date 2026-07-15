@@ -1,6 +1,5 @@
-// Hand-written mirrors of the Python core's JSON payload. Kept in sync with the
-// dataclasses in taximate.core by the drift-guard test (see the drift-guard
-// test, which type-checks the golden fixture against these interfaces).
+// Hand-written mirrors of the Python core's JSON payload; keep in sync with the
+// taximate.core dataclasses.
 
 /** One row of the tax summary table, mirroring core `DisplayRow` (snake_case). */
 export interface DisplayRow {
@@ -31,4 +30,16 @@ export interface ComputeResult {
 export interface CategoryInfo {
   name: string
   description: string
+}
+
+/** US state whose tax rules the engine applies (keys into state_tax_rules.csv). */
+export type USState = "california" | "massachusetts"
+
+/** Default state when none is persisted or selected. */
+export const DEFAULT_STATE: USState = "california"
+
+/** One selectable state for the picker, from the engine's `supported_states()`. */
+export interface StateOption {
+  value: USState
+  label: string
 }

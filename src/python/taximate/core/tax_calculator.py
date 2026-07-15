@@ -1,29 +1,16 @@
 """Tax calculation engine for self-employment income.
 
-This module provides classes for calculating various taxes on self-employment
-income including:
-- Federal income tax (progressive brackets)
-- California state income tax (progressive brackets)
-- Self-employment tax (Social Security + Medicare)
-- Sales tax
-- Manual deductions (home office, car expenses)
+Computes federal + state (CA, MA) income tax, self-employment tax (SS + Medicare +
+Additional Medicare), sales tax, and manual deductions (home office, car). Rates load
+from ``tax_rates/*.csv``.
 
-Tax rates are loaded from CSV files in the tax_rates/ directory, making them
-easy to update for new tax years or different jurisdictions.
-
-Disclaimer:
-    This module is for informational and educational purposes only. It does not
-    constitute financial, tax, or legal advice. Tax laws are complex and vary by
-    jurisdiction. Always consult a qualified tax professional for advice specific
-    to your situation.
-
-Classes:
-    TaxBracket: Represents a single progressive tax bracket.
-    IncomeCategory: Groups transaction items into income/expense categories.
-    TaxInputs: Input values aggregated from transaction categories.
-    TaxResults: Complete tax calculation results with all computed values.
-    TaxRates: Loads and manages tax rates from CSV files.
-    TaxCalculator: Main calculation engine for computing taxes.
+Estimates only, not tax advice. Deliberate simplifications:
+    - No federal standard deduction (federal taxable income starts at $0).
+    - Freelance income already taxed (``all_tax_applied``) doesn't fill the lower
+      brackets, so business income's marginal rate can be understated.
+    - The Social Security wage base isn't reduced by W-2 wages already taxed.
+    - The home-office deduction isn't limited to business income.
+    - Massachusetts clothing is fully taxable (the $175/item exemption isn't modeled).
 """
 
 from __future__ import annotations
@@ -39,6 +26,9 @@ CATEGORY_FREELANCE = "Freelance (Tax Already Paid)"
 CATEGORY_REVENUE_SALES_TAX_BUNDLED = "Revenue (Sales Tax Bundled)"
 CATEGORY_REVENUE_SALES_TAX_APPLIED = "Revenue (Sales Tax Applied)"
 CATEGORY_EXPENSES = "Business Expenses"
+
+# Default US state when none is specified (keys into state_tax_rules.csv).
+DEFAULT_STATE = "california"
 
 
 @dataclass(frozen=True)
@@ -57,13 +47,13 @@ class DisplayRow:
 # rates are found wherever taximate is installed, including in the browser wheel.
 TAX_RATES_DIR = Path(__file__).resolve().parent.parent / "tax_rates"
 
+# rate_type keys that rate_files.csv must map to a year-specific CSV. State
+# income-tax brackets are resolved per state via state_tax_rules.csv instead.
+_REQUIRED_RATE_FILES = frozenset({"federal_brackets", "self_employment", "sales_tax"})
+
 
 def _read_rows(csv_path: Path) -> list[dict[str, str]]:
-    """Read a small, trusted rate CSV into a list of ``dict[str, str]`` rows.
-
-    Uses ``csv.reader`` (values are ``str``) rather than ``DictReader`` (whose
-    values are typed ``str | Any``) so the strict type check stays clean.
-    """
+    """Read a trusted rate CSV into ``dict[str, str]`` rows (``csv.reader`` keeps values ``str`` for strict mypy)."""
     with csv_path.open(newline="") as f:
         reader = csv.reader(f)
         header = next(reader, None)
@@ -81,6 +71,21 @@ class TaxBracket:
     max_income: float | None  # None means no upper limit
 
 
+@dataclass(frozen=True)
+class StateTaxRules:
+    """Per-state tax-base and sales-tax parameters, from ``state_tax_rules.csv``.
+
+    ``se_deduction_cap`` None -> follow the federal half-of-SE-tax deduction (CA);
+    a number -> deduct the full SE tax paid up to that cap (MA, $2,000).
+    ``sales_tax_jurisdiction`` keys into the sales-tax CSV (via ``rate_files.csv``).
+    """
+
+    brackets_csv: str
+    standard_deduction: float
+    se_deduction_cap: float | None
+    sales_tax_jurisdiction: str
+
+
 @dataclass
 class IncomeCategory:
     """Represents an income/expense category with associated items."""
@@ -92,21 +97,13 @@ class IncomeCategory:
 
 @dataclass(frozen=True, slots=True)
 class TaxInputs:
-    """Input values for tax calculations, aggregated from transaction categories.
+    """Category totals fed into a tax calculation."""
 
-    Attributes:
-        all_tax_applied: Freelance income where taxes are already withheld.
-        sales_tax_bundled: Revenue with sales tax included in the price.
-        sales_tax_applied: Revenue where sales tax was collected separately.
-        expenses: Total deductible business expenses (positive value).
-        deductions: Manual deductions (e.g., home office deduction).
-    """
-
-    all_tax_applied: float
-    sales_tax_bundled: float
-    sales_tax_applied: float
-    expenses: float
-    deductions: float = 0.0
+    all_tax_applied: float  # freelance income, taxes already withheld
+    sales_tax_bundled: float  # revenue with sales tax included in the price
+    sales_tax_applied: float  # revenue with sales tax collected separately
+    expenses: float  # deductible business expenses (positive)
+    deductions: float = 0.0  # manual deductions (home office, car)
 
     def annualized(self, months: int) -> TaxInputs:
         factor = 12 / months
@@ -121,33 +118,7 @@ class TaxInputs:
 
 @dataclass(frozen=True, slots=True)
 class TaxResults:
-    """Complete tax calculation results.
-
-    Contains both input values (for display) and all calculated tax amounts.
-
-    Input Fields:
-        all_tax_applied: Freelance income (taxes already withheld).
-        sales_tax_bundled: Revenue with sales tax bundled in price.
-        sales_tax_applied: Revenue with sales tax collected separately.
-        expenses: Business expenses.
-        deductions: Manual deductions (e.g., home office).
-
-    Calculated Fields:
-        sales_taxable: Revenue after extracting bundled sales tax.
-        sales_tax_rate: Applied sales tax rate.
-        sales_tax: Calculated sales tax owed.
-        profit: Total profit (business + freelance).
-        business_profit: Profit from business revenue minus expenses.
-        taxable_income: Income subject to income tax (after SE deduction).
-        sole_proprietor_tax: Self-employment tax (SS + Medicare).
-        federal_income_tax: Federal income tax from brackets.
-        state_income_tax: State income tax from brackets.
-        total_income_tax: Sum of SE + federal + state taxes.
-        total_tax: Total tax including sales tax.
-        take_home: Net income after all income taxes.
-        gross_business_revenue: Total business revenue before taxes.
-        gross_revenue: Total revenue including freelance income.
-    """
+    """Input values plus all computed tax amounts for one calculation."""
 
     all_tax_applied: float
     sales_tax_bundled: float
@@ -155,23 +126,23 @@ class TaxResults:
     expenses: float
     deductions: float
 
-    sales_taxable: float
+    sales_taxable: float  # bundled revenue after extracting sales tax
     sales_tax_rate: float
     sales_tax: float
 
-    profit: float
-    business_profit: float
-    taxable_income: float
+    profit: float  # business_profit + freelance
+    business_profit: float  # sales-taxable + applied revenue - expenses - deductions
+    taxable_income: float  # federal base: business_profit - half the deductible SE tax
 
-    sole_proprietor_tax: float
+    sole_proprietor_tax: float  # SE tax (SS + Medicare + Additional Medicare)
     federal_income_tax: float
     state_income_tax: float
-    total_income_tax: float
-    total_tax: float
+    total_income_tax: float  # SE + federal + state
+    total_tax: float  # total_income_tax + sales tax
 
-    take_home: float
+    take_home: float  # profit - total_income_tax
     gross_business_revenue: float
-    gross_revenue: float
+    gross_revenue: float  # gross_business_revenue + freelance
 
     def as_dict(self) -> dict[str, float]:
         """Convert results to a dictionary."""
@@ -218,17 +189,22 @@ class SummaryResult:
 class TaxRates:
     """Load and manage tax rates from CSV files."""
 
-    def __init__(self, tax_rates_dir: Path = TAX_RATES_DIR) -> None:
+    # Populated from the rate CSVs at construction; no hardcoded fallbacks.
+    se_social_security_rate: float
+    se_medicare_rate: float
+    se_additional_medicare_rate: float
+    se_additional_medicare_threshold: float
+    se_wage_base: float
+    se_income_factor: float
+    sales_tax_rate: float
+
+    def __init__(self, tax_rates_dir: Path = TAX_RATES_DIR, state: str = DEFAULT_STATE) -> None:
         self.tax_rates_dir = tax_rates_dir
+        self.state = state
         self.federal_brackets: list[TaxBracket] = []
         self.state_brackets: list[TaxBracket] = []
-        self.se_social_security_rate: float = 0.124
-        self.se_medicare_rate: float = 0.029
-        self.se_additional_medicare_rate: float = 0.009
-        self.se_additional_medicare_threshold: float = 200000
-        self.se_wage_base: float = 176100
-        self.se_income_factor: float = 0.9235
-        self.sales_tax_rate: float = 0.0775
+        self.rate_files = self._load_rate_files()
+        self.rules = self._load_state_rules()
         self._load_rates()
 
     def _load_rates(self) -> None:
@@ -238,78 +214,113 @@ class TaxRates:
         self._load_self_employment_rates()
         self._load_sales_tax_rates()
 
+    def _require(self, filename: str) -> Path:
+        """Resolve a bundled rate file; raise if absent (a missing file is a packaging error)."""
+        csv_path = self.tax_rates_dir / filename
+        if not csv_path.exists():
+            raise FileNotFoundError(
+                f"Required tax-rate file {filename!r} not found in {self.tax_rates_dir} "
+                "-- is it bundled in the wheel?"
+            )
+        return csv_path
+
+    def _load_rate_files(self) -> dict[str, str]:
+        """Map ``rate_type`` -> filename from ``rate_files.csv`` (keeps the tax year out of code)."""
+        manifest_path = self._require("rate_files.csv")
+        rate_files = {
+            row["rate_type"]: row["csv"]
+            for row in _read_rows(manifest_path)
+            if row.get("rate_type")
+        }
+        missing = _REQUIRED_RATE_FILES - rate_files.keys()
+        if missing:
+            raise ValueError(
+                f"rate_files.csv is missing required rate_type row(s): {sorted(missing)}"
+            )
+        return rate_files
+
+    def _load_state_rules(self) -> StateTaxRules:
+        """Look up the rules row for ``self.state``; raise if the state is unknown."""
+        csv_path = self._require("state_tax_rules.csv")
+        for row in _read_rows(csv_path):
+            if row.get("state") == self.state:
+                cap = row.get("se_deduction_cap", "").strip()
+                return StateTaxRules(
+                    brackets_csv=row["brackets_csv"],
+                    standard_deduction=float(row["standard_deduction"]),
+                    se_deduction_cap=float(cap) if cap else None,
+                    sales_tax_jurisdiction=row["sales_tax_jurisdiction"],
+                )
+        raise ValueError(f"Unsupported state {self.state!r}; add a row to state_tax_rules.csv")
+
+    def _load_brackets(self, csv_path: Path) -> list[TaxBracket]:
+        """Parse single-filer progressive brackets from a rate CSV."""
+        brackets: list[TaxBracket] = []
+        for row in _read_rows(csv_path):
+            if row.get("filing_status") != "single":
+                continue
+            max_income = row.get("max_income", "").strip()
+            brackets.append(
+                TaxBracket(
+                    rate=float(row["rate"]),
+                    min_income=float(row["min_income"]),
+                    max_income=float(max_income) if max_income else None,
+                )
+            )
+        return brackets
+
     def _load_federal_brackets(self) -> None:
         """Load federal income tax brackets (single filers)."""
-        csv_path = self.tax_rates_dir / "federal_income_tax_2025.csv"
-        if not csv_path.exists():
-            return
-
-        self.federal_brackets = []
-        for row in _read_rows(csv_path):
-            if row.get("filing_status") != "single":
-                continue
-            max_income = row.get("max_income", "").strip()
-            self.federal_brackets.append(
-                TaxBracket(
-                    rate=float(row["rate"]),
-                    min_income=float(row["min_income"]),
-                    max_income=float(max_income) if max_income else None,
-                )
-            )
+        self.federal_brackets = self._load_brackets(
+            self._require(self.rate_files["federal_brackets"])
+        )
 
     def _load_state_brackets(self) -> None:
-        """Load California state income tax brackets (single filers)."""
-        csv_path = self.tax_rates_dir / "california_income_tax_2024.csv"
-        if not csv_path.exists():
-            return
-
-        self.state_brackets = []
-        for row in _read_rows(csv_path):
-            if row.get("filing_status") != "single":
-                continue
-            max_income = row.get("max_income", "").strip()
-            self.state_brackets.append(
-                TaxBracket(
-                    rate=float(row["rate"]),
-                    min_income=float(row["min_income"]),
-                    max_income=float(max_income) if max_income else None,
-                )
-            )
+        """Load the selected state's income tax brackets (single filers)."""
+        self.state_brackets = self._load_brackets(self._require(self.rules.brackets_csv))
 
     def _load_self_employment_rates(self) -> None:
-        """Load self-employment tax rates."""
-        csv_path = self.tax_rates_dir / "self_employment_tax_2025.csv"
-        if not csv_path.exists():
-            return
+        """Load SE tax rates (SS, Medicare, additional Medicare, factor); raise on a missing row."""
+        csv_path = self._require(self.rate_files["self_employment"])
+        rows = {row["tax_type"]: row for row in _read_rows(csv_path) if row.get("tax_type")}
 
-        for row in _read_rows(csv_path):
-            tax_type = row.get("tax_type", "")
-            rate = float(row["rate"])
-            wage_base = row.get("wage_base", "").strip()
+        def _row(tax_type: str) -> dict[str, str]:
+            if tax_type not in rows:
+                raise ValueError(
+                    f"self-employment rate file {csv_path.name!r} is missing the {tax_type!r} row"
+                )
+            return rows[tax_type]
 
-            if tax_type == "social_security":
-                self.se_social_security_rate = rate
-                if wage_base:
-                    self.se_wage_base = float(wage_base)
-            elif tax_type == "medicare":
-                self.se_medicare_rate = rate
-            elif tax_type == "additional_medicare":
-                self.se_additional_medicare_rate = rate
-                if wage_base:
-                    self.se_additional_medicare_threshold = float(wage_base)
-            elif tax_type == "income_factor":
-                self.se_income_factor = rate
+        self.se_social_security_rate = float(_row("social_security")["rate"])
+        self.se_wage_base = float(_row("social_security")["wage_base"])
+        self.se_medicare_rate = float(_row("medicare")["rate"])
+        self.se_additional_medicare_rate = float(_row("additional_medicare")["rate"])
+        self.se_additional_medicare_threshold = float(_row("additional_medicare")["wage_base"])
+        self.se_income_factor = float(_row("income_factor")["rate"])
 
     def _load_sales_tax_rates(self) -> None:
-        """Load sales tax rates."""
-        csv_path = self.tax_rates_dir / "sales_tax_2025.csv"
-        if not csv_path.exists():
-            return
-
+        """Load the sales tax rate for the selected state's jurisdiction."""
+        csv_path = self._require(self.rate_files["sales_tax"])
+        jurisdiction = self.rules.sales_tax_jurisdiction
         for row in _read_rows(csv_path):
-            if row.get("jurisdiction") == "san_diego_city":
+            if row.get("jurisdiction") == jurisdiction:
                 self.sales_tax_rate = float(row["rate"])
-                break
+                return
+        raise ValueError(
+            f"Sales-tax jurisdiction {jurisdiction!r} (state {self.state!r}) not found "
+            f"in {csv_path.name}"
+        )
+
+    def state_se_tax_deduction(self, net_earnings: float) -> float:
+        """State-side SE-tax deduction.
+
+        CA: half the deductible Schedule SE tax (SS + Medicare, excl. Additional Medicare).
+        MA: full SE tax paid, capped at ``se_deduction_cap`` ($2,000).
+        """
+        cap = self.rules.se_deduction_cap
+        if cap is None:
+            return 0.5 * self.deductible_se_tax(net_earnings)
+        return min(self.calculate_self_employment_tax(net_earnings), cap)
 
     def calculate_bracket_tax(self, income: float, brackets: list[TaxBracket]) -> float:
         """Calculate tax using progressive brackets."""
@@ -332,43 +343,55 @@ class TaxRates:
 
         return total_tax
 
-    def calculate_self_employment_tax(self, net_earnings: float) -> float:
-        """
-        Calculate self-employment tax.
+    def deductible_se_tax(self, net_earnings: float) -> float:
+        """Schedule SE tax: SS + Medicare on 92.35% of net earnings.
 
-        SE tax = (net_earnings * 0.9235) * (Social Security rate + Medicare rate)
-        Plus additional Medicare tax on high earners.
+        The half-deductible portion of SE tax; excludes the Additional Medicare Tax (Form 8959).
         """
         if net_earnings <= 0:
             return 0.0
-
-        # Apply the 92.35% factor
         taxable_se_income = net_earnings * self.se_income_factor
-
-        # Social Security portion (capped at wage base)
-        ss_taxable = min(taxable_se_income, self.se_wage_base)
-        ss_tax = ss_taxable * self.se_social_security_rate
-
-        # Medicare portion (no cap)
+        # Social Security (capped at the wage base) + Medicare (no cap).
+        ss_tax = min(taxable_se_income, self.se_wage_base) * self.se_social_security_rate
         medicare_tax = taxable_se_income * self.se_medicare_rate
+        return ss_tax + medicare_tax
 
-        # Additional Medicare tax on high earners
-        additional_medicare = 0.0
-        if taxable_se_income > self.se_additional_medicare_threshold:
-            additional_medicare = (
-                taxable_se_income - self.se_additional_medicare_threshold
-            ) * self.se_additional_medicare_rate
+    def additional_medicare_tax(self, net_earnings: float) -> float:
+        """Additional Medicare Tax (Form 8959): 0.9% on the 92.35% amount over the threshold.
 
-        return ss_tax + medicare_tax + additional_medicare
+        Not part of Schedule SE and not deductible.
+        """
+        if net_earnings <= 0:
+            return 0.0
+        taxable_se_income = net_earnings * self.se_income_factor
+        if taxable_se_income <= self.se_additional_medicare_threshold:
+            return 0.0
+        return (
+            taxable_se_income - self.se_additional_medicare_threshold
+        ) * self.se_additional_medicare_rate
+
+    def calculate_self_employment_tax(self, net_earnings: float) -> float:
+        """Total self-employment tax: Schedule SE (SS + Medicare) + Additional Medicare."""
+        return self.deductible_se_tax(net_earnings) + self.additional_medicare_tax(net_earnings)
+
+
+def supported_states(tax_rates_dir: Path = TAX_RATES_DIR) -> list[dict[str, str]]:
+    """Supported states as ``{"value", "label"}`` rows from ``state_tax_rules.csv`` (source of truth for the UI picker)."""
+    csv_path = tax_rates_dir / "state_tax_rules.csv"
+    return [
+        {"value": row["state"], "label": row.get("label") or row["state"].title()}
+        for row in _read_rows(csv_path)
+        if row.get("state")
+    ]
 
 
 class TaxCalculator:
     """Calculate taxes based on categorized transactions."""
 
-    def __init__(self, tax_rates_dir: Path = TAX_RATES_DIR) -> None:
+    def __init__(self, tax_rates_dir: Path = TAX_RATES_DIR, state: str = DEFAULT_STATE) -> None:
         self.categories: dict[str, IncomeCategory] = {}
         self.item_to_category: dict[str, str] = {}
-        self.tax_rates = TaxRates(tax_rates_dir)
+        self.tax_rates = TaxRates(tax_rates_dir, state=state)
         self.home_office_deduction: float = 0.0
         self.car_deduction: float = 0.0
         self._setup_default_categories()
@@ -445,26 +468,35 @@ class TaxCalculator:
 
     def calculate_taxes(self, inputs: TaxInputs) -> TaxResults:
         """Core tax calculator given category totals (already aggregated)."""
-        # Backcalculate how much sales tax in included in the sales_tax_bundled
+        # Extract the sales tax bundled into sales_tax_bundled prices.
         sales_taxable = inputs.sales_tax_bundled / (1 + self.tax_rates.sales_tax_rate)
         sales_tax = inputs.sales_tax_bundled - sales_taxable
 
-        # Calculate how much profit from hustles and main business
-        # Deductions reduce profit similar to expenses
+        # Business profit: sales-taxable + applied revenue - expenses - deductions.
         total_deductible = inputs.expenses + inputs.deductions
         business_profit = sales_taxable + inputs.sales_tax_applied - total_deductible
         profit = business_profit + inputs.all_tax_applied
 
         sole_proprietor_tax = self.tax_rates.calculate_self_employment_tax(business_profit)
 
-        se_tax_deduction = sole_proprietor_tax * 0.5
+        # Federal base: business profit - half the deductible SE tax (SS + Medicare;
+        # excludes Additional Medicare; no standard deduction).
+        se_tax_deduction = 0.5 * self.tax_rates.deductible_se_tax(business_profit)
         taxable_income = max(0.0, business_profit - se_tax_deduction)
+
+        # State base: business profit - state SE deduction - standard deduction.
+        state_taxable_income = max(
+            0.0,
+            business_profit
+            - self.tax_rates.state_se_tax_deduction(business_profit)
+            - self.tax_rates.rules.standard_deduction,
+        )
 
         federal_income_tax = self.tax_rates.calculate_bracket_tax(
             taxable_income, self.tax_rates.federal_brackets
         )
         state_income_tax = self.tax_rates.calculate_bracket_tax(
-            taxable_income, self.tax_rates.state_brackets
+            state_taxable_income, self.tax_rates.state_brackets
         )
 
         total_income_tax = sole_proprietor_tax + federal_income_tax + state_income_tax

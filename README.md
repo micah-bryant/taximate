@@ -9,14 +9,14 @@ Estimate self-employment taxes from your [EveryDollar](https://www.everydollar.c
 Load your EveryDollar CSVs, assign each item to a category, then **Calculate**. Results cover the loaded period and an annualized projection.
 
 - **Categories:** Freelance (Tax Already Paid), Revenue (Sales Tax Bundled), Revenue (Sales Tax Applied), Business Expenses.
-- **Deductions:** home office `(Rent + Utilities + Insurance) × Office% × Months`; car standard-mileage `miles × $0.70`; car actual-expense `(Business ÷ Total miles) × Car cost`.
-- **Calc flow:** extract bundled sales tax, then business profit (`sales-taxable + applied revenue - expenses - deductions`), SE tax (92.35% × 15.3%, SS capped at $176,100), taxable income (`profit - ½ SE tax`), federal + CA brackets, take-home.
+- **Deductions:** home office — regular `(Rent + Utilities + Insurance) × Office% × Months` or simplified `$5 × min(sq ft, 300)` (max $1,500/yr); car standard-mileage `miles × $0.725`; car actual-expense `(Business ÷ Total miles) × Car cost`.
+- **Calc flow:** extract bundled sales tax, then business profit (`sales-taxable + applied revenue - expenses - deductions`), SE tax (92.35% × 15.3%, SS capped at $184,500), taxable income (`profit - ½ SE tax`), federal + state brackets, take-home.
 
-Rates are data, not code: `src/python/taximate/tax_rates/*.csv` (2025 federal, 2024 CA, 7.75% San Diego), bundled into the wheel. Edit the CSVs for new years.
+Rates are data, not code: `src/python/taximate/tax_rates/*.csv` (2026 federal, 2025 CA, 2026 MA, 7.75% San Diego), bundled into the wheel. Edit the CSVs for new years.
 
 ## Privacy
 
-No backend; nothing is uploaded. A `<meta>` CSP locks `connect-src` to this origin plus the Pyodide CDN, so your data physically can't be sent elsewhere (guarded by `taximate-parity/`'s `csp.spec.ts`).
+No backend; nothing is uploaded. A `<meta>` CSP locks `connect-src` to this origin plus the Pyodide CDN, so your data physically can't be sent elsewhere.
 
 ## Architecture
 

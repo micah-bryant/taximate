@@ -1,0 +1,3 @@
+state,label,brackets_csv,standard_deduction,se_deduction_cap,sales_tax_jurisdiction
+california,California,california_income_tax_2025.csv,5706,,san_diego_city
+massachusetts,Massachusetts,massachusetts_income_tax_2026.csv,4400,2000,massachusetts

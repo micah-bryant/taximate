@@ -1,11 +1,9 @@
-// Loads Pyodide, installs the taximate wheel (which bundles the rate tables),
-// and exposes a small typed calc API to React. All tax math runs in Python (the
-// same core as the desktop app), so it stays auditable in one language.
+// Loads Pyodide, installs the taximate wheel (which bundles the rate tables), and
+// exposes a small typed calc API to React. All tax math runs in Python.
 //
-// The bridge is JSON-string in / JSON-string out for structured data (no PyProxy
-// bookkeeping); scalars pass through directly.
+// Bridge: JSON-string in / JSON-string out for structured data; scalars pass through.
 
-import type { CategoryInfo, ComputeResult, LoadResult } from "./types"
+import type { CategoryInfo, ComputeResult, LoadResult, StateOption, USState } from "./types"
 
 // Pinned Pyodide: Python 3.13, bundles pydantic 2.10.6 + micropip (verified).
 const PYODIDE_VERSION = "0.28.2"
@@ -16,10 +14,13 @@ const FACADE = String.raw`
 import json
 from dataclasses import asdict
 from taximate.core.data_loader import load_csvs_from_strings, unique_items
-from taximate.core.tax_calculator import TaxCalculator
+from taximate.core.tax_calculator import DEFAULT_STATE, TaxCalculator, supported_states as _supported_states
 from taximate.core import deductions as _ded
 
 _rows = []
+
+def supported_states():
+    return json.dumps(_supported_states())
 
 def load_files(files_json):
     global _rows
@@ -31,16 +32,16 @@ def load_files(files_json):
         "files": len({r.source_file for r in _rows}),
     })
 
-def categories():
-    calc = TaxCalculator()
+def categories(state=DEFAULT_STATE):
+    calc = TaxCalculator(state=state)
     return json.dumps([
         {"name": c.name, "description": c.description}
         for c in calc.categories.values()
     ])
 
-def compute(assignments_json, home_office, car, months):
+def compute(assignments_json, home_office, car, months, state=DEFAULT_STATE):
     assignments = json.loads(assignments_json)
-    calc = TaxCalculator()
+    calc = TaxCalculator(state=state)
     for item, cat in assignments.items():
         if cat:
             calc.assign_item_to_category(item, cat)
@@ -59,6 +60,9 @@ def calc_home_office(rent, utilities, insurance, office_pct, months):
         float(rent), float(utilities), float(insurance), float(office_pct), int(months)
     )
 
+def calc_home_office_simplified(square_feet, months):
+    return _ded.home_office_deduction_simplified(float(square_feet), int(months))
+
 def calc_car_standard(miles):
     return _ded.car_standard_mileage_deduction(float(miles))
 
@@ -70,12 +74,14 @@ def calc_car_actual(business_miles, total_miles, car_cost):
 
 export interface TaximateApi {
   loadFiles(files: [string, string][]): LoadResult
-  categories(): CategoryInfo[]
+  supportedStates(): StateOption[]
+  categories(state: USState): CategoryInfo[]
   compute(
     assignments: Record<string, string>,
     homeOffice: number,
     car: number,
     months: number,
+    state: USState,
   ): ComputeResult
   homeOffice(
     rent: number,
@@ -84,6 +90,7 @@ export interface TaximateApi {
     officePct: number,
     months: number,
   ): number
+  homeOfficeSimplified(squareFeet: number, months: number): number
   carStandard(miles: number): number
   carActual(businessMiles: number, totalMiles: number, carCost: number): number
 }
@@ -110,21 +117,26 @@ async function boot(
   pyodide.runPython(FACADE)
   const g = pyodide.globals
   const loadFilesPy = g.get("load_files")
+  const supportedStatesPy = g.get("supported_states")
   const categoriesPy = g.get("categories")
   const computePy = g.get("compute")
   const hoPy = g.get("calc_home_office")
+  const hosPy = g.get("calc_home_office_simplified")
   const csPy = g.get("calc_car_standard")
   const caPy = g.get("calc_car_actual")
 
   const api: TaximateApi = {
     loadFiles: (files) => JSON.parse(loadFilesPy(JSON.stringify(files))),
-    categories: () => JSON.parse(categoriesPy()),
-    compute: (a, ho, car, m) => JSON.parse(computePy(JSON.stringify(a), ho, car, m)),
+    supportedStates: () => JSON.parse(supportedStatesPy()),
+    categories: (state) => JSON.parse(categoriesPy(state)),
+    compute: (a, ho, car, m, state) =>
+      JSON.parse(computePy(JSON.stringify(a), ho, car, m, state)),
     homeOffice: (r, u, i, p, m) => hoPy(r, u, i, p, m),
+    homeOfficeSimplified: (sqft, m) => hosPy(sqft, m),
     carStandard: (mi) => csPy(mi),
     carActual: (b, t, c) => caPy(b, t, c),
   }
-  // Expose for the E2E golden-parity test (harmless debug handle on a public app).
+  // Expose the API for programmatic/testing access (harmless debug handle on a public app).
   ;(globalThis as unknown as { __taximateApi?: TaximateApi }).__taximateApi = api
   return api
 }
