@@ -36,7 +36,7 @@ export interface CategoryInfo {
 export type USState = "california" | "massachusetts"
 
 /** Default state when none is persisted or selected. */
-export const DEFAULT_STATE: USState = "california"
+export const DEFAULT_STATE: USState = "massachusetts"
 
 /** One selectable state for the picker, from the engine's `supported_states()`. */
 export interface StateOption {

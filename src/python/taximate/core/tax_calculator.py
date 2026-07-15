@@ -28,7 +28,7 @@ CATEGORY_REVENUE_SALES_TAX_APPLIED = "Revenue (Sales Tax Applied)"
 CATEGORY_EXPENSES = "Business Expenses"
 
 # Default US state when none is specified (keys into state_tax_rules.csv).
-DEFAULT_STATE = "california"
+DEFAULT_STATE = "massachusetts"
 
 
 @dataclass(frozen=True)
