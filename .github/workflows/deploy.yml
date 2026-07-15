@@ -27,7 +27,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@v5
 
-      - name: Parity gate (Python tests, incl. golden fixture)
+      - name: Correctness gate (pytest, incl. golden tests)
         run: |
           uv sync --group dev
           uv run pytest -q

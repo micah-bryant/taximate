@@ -17,7 +17,7 @@ interface CategoryPanelProps {
   onRemove: () => void
 }
 
-/** Step 2 (right) — pick a category and assign/remove the selected items. */
+/** Step 2 (right): pick a category and assign/remove the selected items. */
 export function CategoryPanel({
   categories,
   category,

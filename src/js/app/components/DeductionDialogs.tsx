@@ -52,10 +52,12 @@ function MoneyField({ control, name }: { control: any; name: string }) {
 
 // ---------------- Home office ----------------
 const homeOfficeSchema = z.object({
+  method: z.enum(["regular", "simplified"]),
   rent: z.number().min(0),
   utilities: z.number().min(0),
   insurance: z.number().min(0),
   officePct: z.number().min(0).max(100),
+  squareFeet: z.number().min(0),
 })
 type HomeOfficeValues = z.infer<typeof homeOfficeSchema>
 
@@ -73,11 +75,23 @@ function HomeOfficeDialog({
   const [open, setOpen] = useState(false)
   const form = useForm<HomeOfficeValues>({
     resolver: zodResolver(homeOfficeSchema),
-    defaultValues: { rent: 0, utilities: 0, insurance: 0, officePct: 0 },
+    defaultValues: {
+      method: "regular",
+      rent: 0,
+      utilities: 0,
+      insurance: 0,
+      officePct: 0,
+      squareFeet: 0,
+    },
   })
+  const method = form.watch("method")
 
   const submit = (v: HomeOfficeValues) => {
-    onSet(api.homeOffice(v.rent, v.utilities, v.insurance, v.officePct / 100, months))
+    const value =
+      v.method === "regular"
+        ? api.homeOffice(v.rent, v.utilities, v.insurance, v.officePct / 100, months)
+        : api.homeOfficeSimplified(v.squareFeet, months)
+    onSet(value)
     setOpen(false)
   }
 
@@ -91,36 +105,75 @@ function HomeOfficeDialog({
           <DialogHeader>
             <DialogTitle>Home office deduction</DialogTitle>
             <DialogDescription>
-              (Rent + utilities + insurance) × office %, over {months} month
-              {months === 1 ? "" : "s"}.
+              Regular (rent + utilities + insurance × office %) or simplified ($5/sq ft, up
+              to 300), prorated over {months} month{months === 1 ? "" : "s"}.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={form.handleSubmit(submit)} className="flex flex-col gap-3">
-            <Field label="Monthly rent">
-              <MoneyField control={form.control} name="rent" />
-            </Field>
-            <Field label="Monthly utilities">
-              <MoneyField control={form.control} name="utilities" />
-            </Field>
-            <Field label="Monthly insurance">
-              <MoneyField control={form.control} name="insurance" />
-            </Field>
-            <Field label="Office % of home">
-              <Controller
-                control={form.control}
-                name="officePct"
-                render={({ field }) => (
-                  <NumericFormat
-                    className={inputClass}
-                    value={field.value}
-                    suffix="%"
-                    allowNegative={false}
-                    decimalScale={1}
-                    onValueChange={(v) => field.onChange(v.floatValue ?? 0)}
+            <Controller
+              control={form.control}
+              name="method"
+              render={({ field }) => (
+                <RadioGroup
+                  value={field.value}
+                  onValueChange={(value) => field.onChange(value)}
+                  className="flex gap-4"
+                >
+                  <label className="flex items-center gap-2 text-sm">
+                    <RadioGroupItem value="regular" /> Regular
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <RadioGroupItem value="simplified" /> Simplified
+                  </label>
+                </RadioGroup>
+              )}
+            />
+            {method === "regular" ? (
+              <>
+                <Field label="Monthly rent">
+                  <MoneyField control={form.control} name="rent" />
+                </Field>
+                <Field label="Monthly utilities">
+                  <MoneyField control={form.control} name="utilities" />
+                </Field>
+                <Field label="Monthly insurance">
+                  <MoneyField control={form.control} name="insurance" />
+                </Field>
+                <Field label="Office % of home">
+                  <Controller
+                    control={form.control}
+                    name="officePct"
+                    render={({ field }) => (
+                      <NumericFormat
+                        className={inputClass}
+                        value={field.value}
+                        suffix="%"
+                        allowNegative={false}
+                        decimalScale={1}
+                        onValueChange={(v) => field.onChange(v.floatValue ?? 0)}
+                      />
+                    )}
                   />
-                )}
-              />
-            </Field>
+                </Field>
+              </>
+            ) : (
+              <Field label="Office square feet (max 300)">
+                <Controller
+                  control={form.control}
+                  name="squareFeet"
+                  render={({ field }) => (
+                    <NumericFormat
+                      className={inputClass}
+                      value={field.value}
+                      thousandSeparator
+                      allowNegative={false}
+                      decimalScale={0}
+                      onValueChange={(v) => field.onChange(v.floatValue ?? 0)}
+                    />
+                  )}
+                />
+              </Field>
+            )}
             <DialogFooter>
               <Button type="submit">Apply</Button>
             </DialogFooter>

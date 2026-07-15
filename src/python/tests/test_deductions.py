@@ -7,6 +7,7 @@ from taximate.core.deductions import (
     car_actual_expense_deduction,
     car_standard_mileage_deduction,
     home_office_deduction,
+    home_office_deduction_simplified,
 )
 
 # ---------------------------------------------------------------------------
@@ -39,6 +40,26 @@ def test_home_office_deduction_partial_year() -> None:
         rent=1500.0, utilities=200.0, insurance=100.0, office_pct=0.15, months=6
     )
     assert full_year == pytest.approx(half_year * 2)
+
+
+def test_home_office_simplified_basic() -> None:
+    """$5/sq ft for a full year."""
+    assert home_office_deduction_simplified(200.0, months=12) == pytest.approx(1000.0)
+
+
+def test_home_office_simplified_caps_at_300_sqft() -> None:
+    """Above 300 sq ft caps at the $1,500/yr maximum."""
+    assert home_office_deduction_simplified(400.0, months=12) == pytest.approx(1500.0)
+
+
+def test_home_office_simplified_prorates_by_months() -> None:
+    """Prorated to the loaded period (annualizes back to the full-year value)."""
+    assert home_office_deduction_simplified(300.0, months=6) == pytest.approx(750.0)
+
+
+def test_home_office_simplified_negative_sqft() -> None:
+    """Negative square footage yields zero."""
+    assert home_office_deduction_simplified(-50.0, months=12) == 0.0
 
 
 # ---------------------------------------------------------------------------

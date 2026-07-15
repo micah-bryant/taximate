@@ -1,20 +1,10 @@
-"""CSV data loading and validation for Taximate.
+"""Load EveryDollar CSV exports into validated ``TransactionRow`` models.
 
-Loads EveryDollar CSV transaction exports into validated :class:`TransactionRow`
-models. Two entry points are provided:
+- ``load_csvs_from_strings`` takes ``(name, text)`` pairs (the browser path; files stay in memory).
+- ``load_csvs_from_paths`` reads from disk (tests).
 
-- :func:`load_csvs_from_paths` reads files from disk (used by tests).
-- :func:`load_csvs_from_strings` accepts ``(name, text)`` pairs, for the browser
-  (Pyodide), where uploaded files are read as text and never touch a real
-  filesystem.
-
-User-supplied CSVs are untrusted, so every row is validated with pydantic: a
-malformed ``Amount`` raises a clear ``ValidationError`` instead of silently
-becoming ``NaN``.
-
-Supported CSV format (EveryDollar export): a header row with at least ``Item``
-and ``Amount`` columns; extra columns (Date, Group, Type, Merchant) are ignored.
-Calculations key off the ``Item`` column.
+Untrusted input: every row is validated with pydantic. Expected format is a header with
+at least ``Item`` and ``Amount`` columns (extras ignored); calculations key off ``Item``.
 """
 
 from __future__ import annotations

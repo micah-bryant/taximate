@@ -1,12 +1,12 @@
-"""Pure deduction calculation functions for Taximate.
-
-These functions are intentionally free of GUI dependencies so they can be
-unit-tested without Qt.
-"""
+"""Deduction formulas: home office (regular + simplified) and car (standard-mileage, actual-expense)."""
 
 from __future__ import annotations
 
-STANDARD_MILEAGE_RATE: float = 0.70  # IRS rate per mile (update each tax year)
+STANDARD_MILEAGE_RATE: float = 0.725  # 2026 IRS business rate per mile (update each tax year)
+
+# IRS simplified home-office method: $5/sq ft, up to 300 sq ft ($1,500/yr max).
+SIMPLIFIED_HOME_OFFICE_RATE: float = 5.0
+SIMPLIFIED_HOME_OFFICE_MAX_SQFT: float = 300.0
 
 
 def home_office_deduction(
@@ -16,30 +16,24 @@ def home_office_deduction(
     office_pct: float,
     months: int,
 ) -> float:
-    """Calculate total home office deduction for the period.
+    """Regular home-office deduction for the period: (rent + utilities + insurance) x office_pct x months.
 
-    Args:
-        rent: Monthly rent amount.
-        utilities: Monthly utilities amount.
-        insurance: Monthly insurance amount.
-        office_pct: Office percentage (0.0-1.0).
-        months: Number of months in the period.
-
-    Returns:
-        Total deduction for the period.
+    Monthly amounts; ``office_pct`` is 0.0-1.0.
     """
     return (rent + utilities + insurance) * office_pct * months
 
 
-def car_standard_mileage_deduction(business_miles: float) -> float:
-    """Calculate car deduction using the IRS standard mileage rate.
+def home_office_deduction_simplified(square_feet: float, months: int = 12) -> float:
+    """Simplified home-office deduction, prorated to the period.
 
-    Args:
-        business_miles: Miles driven for business purposes.
-
-    Returns:
-        Deduction amount.
+    $5/sq ft up to 300 sq ft ($1,500/yr max), times ``months / 12`` for a partial period.
     """
+    capped_sqft = min(max(square_feet, 0.0), SIMPLIFIED_HOME_OFFICE_MAX_SQFT)
+    return capped_sqft * SIMPLIFIED_HOME_OFFICE_RATE * months / 12
+
+
+def car_standard_mileage_deduction(business_miles: float) -> float:
+    """Car deduction via the IRS standard mileage rate."""
     return business_miles * STANDARD_MILEAGE_RATE
 
 
@@ -48,16 +42,7 @@ def car_actual_expense_deduction(
     total_miles: float,
     car_cost: float,
 ) -> float:
-    """Calculate car deduction using the actual expense method.
-
-    Args:
-        business_miles: Miles driven for business purposes.
-        total_miles: Total miles driven (all purposes).
-        car_cost: Total cost of the car.
-
-    Returns:
-        Deduction amount (0.0 if total_miles is zero).
-    """
+    """Car deduction via the actual-expense method: business share of total car cost. 0.0 if total_miles is 0."""
     if total_miles == 0:
         return 0.0
     return (business_miles / total_miles) * car_cost

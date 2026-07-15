@@ -1,5 +1,6 @@
 """Tests for taximate.core.tax_calculator."""
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ from taximate.core.tax_calculator import (
     TaxInputs,
     TaxRates,
     TaxResults,
+    supported_states,
 )
 
 # ---------------------------------------------------------------------------
@@ -27,13 +29,45 @@ def test_tax_rates_loads_without_error(tax_rates_dir: Path) -> None:
 
 
 def test_tax_rates_sales_tax_rate(tax_rates_dir: Path) -> None:
-    rates = TaxRates(tax_rates_dir)
+    rates = TaxRates(tax_rates_dir, state="california")
     assert rates.sales_tax_rate == pytest.approx(0.0775)
 
 
 def test_tax_rates_se_wage_base(tax_rates_dir: Path) -> None:
     rates = TaxRates(tax_rates_dir)
-    assert rates.se_wage_base == pytest.approx(176100)
+    assert rates.se_wage_base == pytest.approx(184500)
+
+
+def test_unknown_state_raises(tax_rates_dir: Path) -> None:
+    """An unregistered state fails loudly rather than silently loading nothing."""
+    with pytest.raises(ValueError, match="Unsupported state"):
+        TaxRates(tax_rates_dir, state="nevada")
+
+
+def test_missing_rate_file_raises_not_silent_zero(tax_rates_dir: Path, tmp_path: Path) -> None:
+    """A missing bundled rate file fails loudly instead of silently computing $0 tax."""
+    staged = tmp_path / "tax_rates"
+    shutil.copytree(tax_rates_dir, staged)
+    (staged / "federal_income_tax_2026.csv").unlink()
+    with pytest.raises(FileNotFoundError, match=r"federal_income_tax_2026\.csv"):
+        TaxRates(staged)
+
+
+def test_unknown_sales_jurisdiction_raises(tax_rates_dir: Path, tmp_path: Path) -> None:
+    """A state whose sales-tax jurisdiction is absent fails loudly (no 0.0775 fallback)."""
+    staged = tmp_path / "tax_rates"
+    shutil.copytree(tax_rates_dir, staged)
+    rules_csv = staged / "state_tax_rules.csv"
+    rules_csv.write_text(rules_csv.read_text().replace("san_diego_city", "nowhere_city"))
+    with pytest.raises(ValueError, match="jurisdiction"):
+        TaxRates(staged, state="california")
+
+
+def test_supported_states_lists_value_and_label(tax_rates_dir: Path) -> None:
+    """supported_states() is the single source of truth for the UI's state picker."""
+    by_value = {s["value"]: s["label"] for s in supported_states(tax_rates_dir)}
+    assert by_value["california"] == "California"
+    assert by_value["massachusetts"] == "Massachusetts"
 
 
 # ---------------------------------------------------------------------------
@@ -54,7 +88,7 @@ def test_bracket_tax_negative_income(tax_rates_dir: Path) -> None:
 def test_bracket_tax_below_first_bracket(tax_rates_dir: Path) -> None:
     """Income of $5,000 should be taxed at the first bracket rate (10%)."""
     rates = TaxRates(tax_rates_dir)
-    # First federal bracket: 10% from $0 to $11,925
+    # First federal bracket: 10% from $0 to $12,400
     tax = rates.calculate_bracket_tax(5000, rates.federal_brackets)
     assert tax == pytest.approx(5000 * 0.10, rel=1e-4)
 
@@ -62,9 +96,9 @@ def test_bracket_tax_below_first_bracket(tax_rates_dir: Path) -> None:
 def test_bracket_tax_spanning_brackets(tax_rates_dir: Path) -> None:
     """Income of $20,000 should span first two federal brackets."""
     rates = TaxRates(tax_rates_dir)
-    # 10% on first $11,925 = $1,192.50; 12% on remainder = ($20,000 - $11,925) * 0.12
+    # 10% on first $12,400 = $1,240; 12% on remainder = ($20,000 - $12,400) * 0.12
     tax = rates.calculate_bracket_tax(20000, rates.federal_brackets)
-    expected = 11925 * 0.10 + (20000 - 11925) * 0.12
+    expected = 12400 * 0.10 + (20000 - 12400) * 0.12
     assert tax == pytest.approx(expected, rel=1e-4)
 
 
@@ -179,7 +213,7 @@ def test_tax_calculator_calculate_taxes_zero_income(tax_rates_dir: Path) -> None
 
 def test_tax_calculator_calculate_taxes_known_inputs(tax_rates_dir: Path) -> None:
     """Provide fixed inputs and verify output fields are consistent."""
-    calc = TaxCalculator(tax_rates_dir)
+    calc = TaxCalculator(tax_rates_dir, state="california")
     inputs = TaxInputs(
         all_tax_applied=5000.0,
         sales_tax_bundled=10770.0,  # ~$10k + bundled sales tax

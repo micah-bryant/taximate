@@ -5,7 +5,7 @@ interface ItemsListProps {
   onToggle: (item: string) => void
 }
 
-/** Step 2 (left) — the transaction items, multi-select, with [category] tags. */
+/** Step 2 (left): the transaction items, multi-select, with [category] tags. */
 export function ItemsList({ items, assignments, selected, onToggle }: ItemsListProps) {
   if (items.length === 0) {
     return <p className="text-sm text-muted-foreground">Load CSV files to see transaction items.</p>

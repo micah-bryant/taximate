@@ -1,13 +1,41 @@
 import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { CategoryPanel } from "@/components/CategoryPanel"
 import { Deductions } from "@/components/DeductionDialogs"
 import { FileLoader } from "@/components/FileLoader"
 import { ItemsList } from "@/components/ItemsList"
 import { ResultsTable } from "@/components/ResultsTable"
 import { initTaximate, type TaximateApi } from "@/pyodide-runner"
-import type { CategoryInfo, ComputeResult } from "@/types"
+import {
+  DEFAULT_STATE,
+  type CategoryInfo,
+  type ComputeResult,
+  type StateOption,
+  type USState,
+} from "@/types"
+
+const STATE_STORAGE_KEY = "taximate.state"
+const MIN_MONTHS = 1
+const MAX_MONTHS = 12
+
+// Read the persisted state as-is; validated against the engine's list after boot.
+function loadPersistedState(): USState {
+  try {
+    const s = localStorage.getItem(STATE_STORAGE_KEY)
+    if (s) return s as USState
+  } catch {
+    // localStorage may be unavailable (private mode); fall back to the default.
+  }
+  return DEFAULT_STATE
+}
 
 export default function App() {
   const [api, setApi] = useState<TaximateApi | null>(null)
@@ -24,7 +52,9 @@ export default function App() {
   const [category, setCategory] = useState("")
   const [homeOffice, setHomeOffice] = useState(0)
   const [car, setCar] = useState(0)
-  const [months, setMonths] = useState(12)
+  const [months, setMonths] = useState(MAX_MONTHS)
+  const [stateOptions, setStateOptions] = useState<StateOption[]>([])
+  const [usState, setUsState] = useState<USState>(loadPersistedState)
   const [result, setResult] = useState<ComputeResult | null>(null)
 
   useEffect(() => {
@@ -33,7 +63,10 @@ export default function App() {
       .then((a) => {
         if (cancelled) return
         setApi(a)
-        setCategories(a.categories())
+        const options = a.supportedStates()
+        setStateOptions(options)
+        // Drop a persisted state the engine no longer supports.
+        setUsState((prev) => (options.some((o) => o.value === prev) ? prev : DEFAULT_STATE))
         setStatus("ready")
       })
       .catch((e: unknown) => {
@@ -52,6 +85,26 @@ export default function App() {
       cancelled = true
     }
   }, [])
+
+  // Reload categories on boot/state change (descriptions embed the state's sales-tax rate).
+  useEffect(() => {
+    if (!api) return
+    try {
+      setCategories(api.categories(usState))
+    } catch (e) {
+      console.error(e)
+      toast.error(`Could not load categories: ${e}`)
+    }
+  }, [api, usState])
+
+  // Persist the chosen state so it survives reloads.
+  useEffect(() => {
+    try {
+      localStorage.setItem(STATE_STORAGE_KEY, usState)
+    } catch {
+      // ignore unavailable localStorage
+    }
+  }, [usState])
 
   const handleLoad = useCallback(
     (files: [string, string][]) => {
@@ -106,11 +159,11 @@ export default function App() {
       return
     }
     try {
-      setResult(api.compute(assignments, homeOffice, car, months))
+      setResult(api.compute(assignments, homeOffice, car, months, usState))
     } catch (e) {
       toast.error(`Calculation failed: ${e}`)
     }
-  }, [api, assignments, homeOffice, car, months])
+  }, [api, assignments, homeOffice, car, months, usState])
 
   if (status === "booting") return <LoadingOverlay progress={progress} />
   if (status === "error") {
@@ -130,9 +183,18 @@ export default function App() {
         <h1 className="text-2xl font-bold">Taximate</h1>
         <p className="text-sm text-muted-foreground">
           Estimate self-employment taxes from your EveryDollar exports. Everything runs in your
-          browser — your CSVs never leave your device.
+          browser; your CSVs never leave your device.
         </p>
       </header>
+
+      <div
+        role="note"
+        className="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-800 dark:text-amber-300"
+      >
+        <strong>Estimates only, not tax advice.</strong> Taximate approximates your
+        self-employment taxes to help you plan. Have a certified tax professional verify every
+        figure before you file.
+      </div>
 
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold text-primary">1 · Load transactions</h2>
@@ -171,14 +233,37 @@ export default function App() {
           <h2 className="text-lg font-semibold text-primary">3 · Calculate</h2>
           <div className="flex flex-wrap items-center gap-3">
             <label className="flex items-center gap-2 text-sm">
+              State:
+              <Select
+                value={usState}
+                onValueChange={(v) => {
+                  setUsState(v ?? DEFAULT_STATE)
+                  setResult(null)
+                }}
+              >
+                <SelectTrigger className="w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {stateOptions.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+            <label className="flex items-center gap-2 text-sm">
               Months of data:
               <input
                 type="number"
-                min={1}
-                max={12}
+                min={MIN_MONTHS}
+                max={MAX_MONTHS}
                 value={months}
                 onChange={(e) =>
-                  setMonths(Math.min(12, Math.max(1, Number(e.target.value) || 1)))
+                  setMonths(
+                    Math.min(MAX_MONTHS, Math.max(MIN_MONTHS, Number(e.target.value) || MIN_MONTHS)),
+                  )
                 }
                 className="h-9 w-16 rounded-md border border-input bg-transparent px-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
               />
@@ -200,12 +285,16 @@ export default function App() {
 
       {result && (
         <section className="flex flex-col gap-3" data-testid="results">
+          <p className="text-xs text-muted-foreground">
+            Estimates, not tax advice. Verify with a certified tax professional before filing.
+          </p>
           <ResultsTable result={result} />
         </section>
       )}
 
       <footer className="mt-4 border-t border-border pt-4 text-xs text-muted-foreground">
-        Taximate {version && `v${version}`} · Informational only — not tax advice.
+        Taximate {version && `v${version}`} · Estimates only, not tax advice. Verify with a
+        certified tax professional before filing.
       </footer>
     </div>
   )

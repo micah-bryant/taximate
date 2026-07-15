@@ -4,11 +4,9 @@
     <meta charset="UTF-8" />
     <!--
       Content-Security-Policy (GitHub Pages can't set headers, so it's a meta tag).
-      The key line is `connect-src 'self' https://cdn.jsdelivr.net`: the app fetches
-      only its own wheel/manifest and the pinned Pyodide runtime — so an uploaded CSV
-      physically cannot be sent anywhere. That enforces "your data never leaves your
-      device" at the browser level. `wasm-unsafe-eval` runs Pyodide's WebAssembly;
-      `unsafe-eval` is required only by Safari (no wasm-unsafe-eval support there).
+      connect-src is locked to this origin + the Pyodide CDN, so uploaded CSVs can't be
+      sent anywhere. script-src needs 'wasm-unsafe-eval' (Pyodide WASM) and 'unsafe-eval'
+      (Pyodide's boot-time eval probe; also older Safari without wasm-unsafe-eval).
     -->
     <meta
       http-equiv="Content-Security-Policy"
@@ -16,7 +14,7 @@
     />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Taximate — Self-Employment Tax Calculator</title>
+    <title>Taximate: Self-Employment Tax Calculator</title>
   </head>
   <body>
     <div id="root"></div>
